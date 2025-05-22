@@ -1,0 +1,512 @@
+const ApiController = require('./ApiController');
+const SetService = require('../services/SetService');
+const SetValidationService = require('../services/SetValidationService');
+const SetTransformer = require('../services/SetTransformer');
+const responseFormatter = require('../services/ResponseFormatter');
+const PaginationService = require('../services/PaginationService');
+const { Op } = require('sequelize');
+
+class SetsController extends ApiController {
+    constructor() {
+        super('Set');
+        this.setService = new SetService(this.model.sequelize.models);
+    }
+
+    // Convert relative path to full URL
+    convertPathToUrl(path) {
+        if (!path) return null;
+        return responseFormatter.convertPathToUrl(path);
+    }
+
+    // Transform set data before sending response
+    transformSetData(set) {
+        if (!set) return set;
+        return responseFormatter.formatSet(set);
+    }
+
+    // Validate set data
+    validateSetData(data) {
+        const errors = [];
+        if (!data.title || !data.title.trim()) errors.push('Title is required');
+        if (!data.description || !data.description.trim()) errors.push('Description is required');
+        if (!data.category_id) errors.push('Category is required');
+        return errors;
+    }
+
+    // Validate cards data
+    validateCards(cards) {
+        if (!Array.isArray(cards)) {
+            throw new Error('Cards must be an array');
+        }
+
+        const errors = [];
+        cards.forEach((card, index) => {
+            if (!card.front || !card.front.trim()) {
+                errors.push(`Card ${index + 1}: Front content is required`);
+            }
+            if (!card.back || !card.back.trim()) {
+                errors.push(`Card ${index + 1}: Back content is required`);
+            }
+        });
+
+        if (errors.length > 0) {
+            throw new Error(errors.join(', '));
+        }
+    }
+
+    validateQueryParams(params) {
+        const errors = [];
+
+        if (params.page && (isNaN(params.page) || params.page < 1)) {
+            errors.push('Page must be a positive number');
+        }
+
+        if (params.limit && (isNaN(params.limit) || params.limit < 1)) {
+            errors.push('Limit must be a positive number');
+        }
+
+        if (params.educatorId && isNaN(params.educatorId)) {
+            errors.push('Educator ID must be a number');
+        }
+
+        if (params.sortOrder && !['asc', 'desc', 'featured', 'newest', 'oldest'].includes(params.sortOrder.toLowerCase())) {
+            errors.push('Invalid sort order');
+        }
+
+        return errors;
+    }
+
+    parseParams(params) {
+        return {
+            page: parseInt(params.page) || 1,
+            limit: parseInt(params.limit) || 3,
+            category: params.category,
+            sortOrder: params.sortOrder || 'featured',
+            educatorId: params.educatorId ? parseInt(params.educatorId, 10) : null,
+            userId: params.userId ? parseInt(params.userId, 10) : null
+        };
+    }
+
+    parseSortParams(sortOrder) {
+        // Convert to lowercase for consistent comparison
+        const normalizedSortOrder = sortOrder.toLowerCase();
+
+        // Handle direct sort parameters
+        if (normalizedSortOrder === 'asc' || normalizedSortOrder === 'desc') {
+            return {
+                sortBy: 'created_at',
+                sortOrder: normalizedSortOrder.toUpperCase()
+            };
+        }
+
+        // Handle predefined sort orders
+        switch (normalizedSortOrder) {
+            case 'featured':
+                return {
+                    sortBy: 'featured',
+                    sortOrder: 'DESC'
+                };
+            case 'newest':
+                return {
+                    sortBy: 'created_at',
+                    sortOrder: 'DESC'
+                };
+            case 'oldest':
+                return {
+                    sortBy: 'created_at',
+                    sortOrder: 'ASC'
+                };
+            default:
+                return {
+                    sortBy: 'featured',
+                    sortOrder: 'DESC'
+                };
+        }
+    }
+
+    handleError(err, res) {
+        console.error(`Error in SetsController:`, err);
+
+        if (err.name === 'SetNotFoundError') {
+            return res.status(404).json(responseFormatter.formatError({
+                message: err.message
+            }));
+        }
+
+        if (err.name === 'SetValidationError') {
+            return res.status(400).json(responseFormatter.formatError({
+                message: err.message
+            }));
+        }
+
+        if (err.name === 'SetPermissionError') {
+            return res.status(403).json(responseFormatter.formatError({
+                message: err.message
+            }));
+        }
+
+        return res.status(500).json(responseFormatter.formatError({
+            message: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        }));
+    }
+
+    async create(req, res) {
+        try {
+            console.log('SetsController.create - Request body:', req.body);
+            console.log('SetsController.create - Request file:', req.file);
+
+            // Ensure we have the required fields
+            if (!req.body.title || !req.body.description || !req.body.categoryId) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Missing required fields: title, description, and categoryId are required'
+                }));
+            }
+
+            const setData = {
+                title: req.body.title,
+                description: req.body.description,
+                category_id: req.body.categoryId,
+                price: req.body.price || '0',
+                is_subscriber_only: req.body.isSubscriberOnly === 'true',
+                educator_id: req.user.id,
+                featured: req.body.featured === 'true',
+                hidden: req.body.hidden === 'true'
+            };
+
+            let cards = [];
+            try {
+                cards = JSON.parse(req.body.cards || '[]');
+            } catch (err) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: `Invalid cards data: ${err.message}`
+                }));
+            }
+
+            let tags = [];
+            if (req.body.tags) {
+                try {
+                    tags = JSON.parse(req.body.tags);
+                } catch (err) {
+                    console.error('Error parsing tags:', err);
+                }
+            }
+
+            const set = await this.setService.createSet(setData, cards, tags, req.file);
+            return res.json(set);
+        } catch (err) {
+            console.error('SetsController.create - Error:', err);
+            return this.handleError(err, res);
+        }
+    }
+
+    async update(req, res) {
+        try {
+            const setData = SetTransformer.transformSetData(req.body);
+
+            let cards = [];
+            try {
+                cards = JSON.parse(req.body.cards || '[]');
+            } catch (err) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: `Invalid cards data: ${err.message}`
+                }));
+            }
+
+            let tags = [];
+            if (req.body.tags) {
+                try {
+                    tags = JSON.parse(req.body.tags);
+                } catch (err) {
+                    console.error('Error parsing tags:', err);
+                }
+            }
+
+            const set = await this.setService.updateSet(req.params.id, setData, cards, tags, req.file);
+            return res.json(set);
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async list(req, res) {
+        try {
+            console.log('SetsController.list - Request query:', req.query);
+
+            const errors = this.validateQueryParams(req.query);
+            if (errors.length > 0) {
+                console.log('SetsController.list - Validation errors:', errors);
+                return res.status(400).json(responseFormatter.formatError({
+                    message: errors.join(', '),
+                    errors
+                }));
+            }
+
+            // Validate filter values
+            if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
+                console.log('SetsController.list - Invalid educator ID:', req.query.educatorId);
+                return res.status(400).json({ error: 'Invalid educator ID' });
+            }
+
+            const params = this.parseParams({
+                ...req.query,
+                userId: req.user ? req.user.id : null
+            });
+
+            console.log('SetsController.list - Parsed params:', params);
+
+            // Build where clause for set type
+            let whereClause = {};
+            if (req.query.setType) {
+                switch (req.query.setType) {
+                    case 'free':
+                        whereClause = {
+                            price: 0,
+                            is_subscriber_only: 0
+                        };
+                        break;
+                    case 'premium':
+                        whereClause = {
+                            price: {
+                                [Op.gt]: 0
+                            },
+                            is_subscriber_only: 0
+                        };
+                        break;
+                    case 'subscriber':
+                        whereClause = {
+                            is_subscriber_only: 1
+                        };
+                        break;
+                }
+            }
+
+            try {
+                // If category name is provided, find the category ID
+                let categoryId = null;
+                if (req.query.category) {
+                    const category = await this.model.sequelize.models.Category.findOne({
+                        where: { name: req.query.category },
+                        attributes: ['id']
+                    });
+                    if (category) {
+                        categoryId = category.id;
+                    } else {
+                        return res.status(404).json({ error: 'Category not found' });
+                    }
+                }
+
+                // Parse sort parameters
+                const { sortBy, sortOrder } = req.query.sortBy ? {
+                    sortBy: req.query.sortBy,
+                    sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
+                } : this.parseSortParams(req.query.sortOrder || 'featured');
+
+                console.log('SetsController.list - Sort params:', { sortBy, sortOrder });
+
+                // Handle liked sets
+                if (req.query.liked === 'true' && req.user) {
+                    const likedSets = await this.model.sequelize.models.UserLike.findAll({
+                        where: { user_id: req.user.id },
+                        attributes: ['set_id']
+                    });
+                    const setIds = likedSets.map(like => like.set_id);
+                    whereClause.id = {
+                        [Op.in]: setIds
+                    };
+                }
+
+                const result = await PaginationService.getPaginatedResults(this.model, {
+                    where: whereClause,
+                    filters: {
+                        educatorId: 'educator_id',
+                        category: 'category_id'
+                    },
+                    defaultSort: sortBy,
+                    defaultOrder: sortOrder,
+                    query: {
+                        ...params,
+                        category: categoryId,
+                        sortBy,
+                        sortOrder
+                    },
+                    allowedSortFields: ['created_at', 'title', 'price', 'featured'],
+                    include: [{
+                            model: this.model.sequelize.models.Category,
+                            as: 'category',
+                            attributes: ['id', 'name']
+                        },
+                        {
+                            model: this.model.sequelize.models.User,
+                            as: 'educator',
+                            attributes: ['id', 'name', 'email']
+                        }
+                    ]
+                });
+
+                // Transform the results
+                result.items = result.items.map(set => {
+                    try {
+                        const transformed = SetTransformer.transformSet(set);
+                        return {
+                            ...transformed,
+                            category: set.category && set.category.name || 'Uncategorized',
+                            categoryId: set.category && set.category.id,
+                            educatorName: set.educator && set.educator.name || 'Unknown',
+                            image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
+                            price: parseFloat(set.price) || 0
+                        };
+                    } catch (transformError) {
+                        console.error('Error transforming set:', transformError);
+                        return {
+                            ...set,
+                            error: 'Error transforming set data'
+                        };
+                    }
+                });
+
+                res.json(result);
+            } catch (paginationError) {
+                console.error('Error in pagination:', paginationError);
+                // Fallback to basic pagination if includes fail
+                const basicResult = await PaginationService.getPaginatedResults(this.model, {
+                    where: whereClause,
+                    filters: {
+                        educatorId: 'educator_id',
+                        category: 'category_id'
+                    },
+                    defaultSort: 'created_at',
+                    defaultOrder: 'DESC',
+                    query: params,
+                    allowedSortFields: ['created_at', 'title', 'price', 'featured']
+                });
+
+                basicResult.items = basicResult.items.map(set => this.transformSetData(set));
+                res.json(basicResult);
+            }
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async get(req, res) {
+        try {
+            console.log('SetsController.get - Starting request:', {
+                setId: req.params.id,
+                userId: req.user ? req.user.id : null,
+                headers: req.headers
+            });
+
+            // Validate and parse the set ID
+            const setId = parseInt(req.params.id, 10);
+            if (isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            // Get the set with all necessary relations
+            const set = await this.model.findByPk(setId, {
+                include: [{
+                        model: this.model.sequelize.models.Category,
+                        as: 'category',
+                        attributes: ['id', 'name']
+                    },
+                    {
+                        model: this.model.sequelize.models.User,
+                        as: 'educator',
+                        attributes: ['id', 'name', 'email']
+                    },
+                    {
+                        model: this.model.sequelize.models.Card,
+                        as: 'cards',
+                        attributes: ['id', 'set_id', 'front', 'back', 'hint'],
+                        required: false // Make it a LEFT JOIN to get sets even without cards
+                    }
+                ]
+            });
+
+            if (!set) {
+                return res.status(404).json(responseFormatter.formatError({
+                    message: 'Set not found'
+                }));
+            }
+
+            console.log('SetsController.get - Set retrieved:', {
+                setId: set.id,
+                price: set.price,
+                educatorId: set.educator_id,
+                userId: req.user ? req.user.id : null,
+                cardCount: set.cards ? set.cards.length : 0,
+                hasCards: !!set.cards
+            });
+
+            // Get the set with access check
+            const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
+            return res.json(result);
+        } catch (err) {
+            console.error('SetsController.get - Error:', err);
+            console.error('Error stack:', err.stack);
+            return res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to retrieve set',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
+        }
+    }
+
+    async delete(req, res) {
+        try {
+            await this.setService.deleteSet(req.params.id);
+            return res.json(responseFormatter.formatSuccess('Set deleted successfully'));
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async toggleHidden(req, res) {
+        try {
+            const set = await this.setService.toggleHidden(req.params.id);
+            return res.json(set);
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async getLikesCount(req, res) {
+        try {
+            const count = await this.setService.getLikesCount(parseInt(req.params.id, 10));
+            res.json({ count });
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async toggleLikeSet(req, res) {
+        try {
+            const result = await this.setService.toggleLike(
+                parseInt(req.params.id, 10),
+                parseInt(req.user.id, 10)
+            );
+            return res.json(result);
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async getUserLikeStatus(req, res) {
+        try {
+            const like = await this.model.sequelize.models.UserLike.findOne({
+                where: {
+                    set_id: parseInt(req.params.id, 10),
+                    user_id: req.user.id
+                }
+            });
+            return res.json({ liked: !!like });
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+}
+
+// Export the class itself, not an instance
+module.exports = SetsController;
