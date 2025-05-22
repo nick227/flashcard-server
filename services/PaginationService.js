@@ -61,8 +61,12 @@ class PaginationService {
 
         console.log('Final where clause:', whereClause);
 
-        // Get total count
-        const total = await model.count({ where: whereClause });
+        // Get total count with the same include conditions
+        const total = await model.count({
+            where: whereClause,
+            include: include,
+            distinct: true
+        });
 
         // Get paginated results
         console.log('Executing findAll with options:', {
