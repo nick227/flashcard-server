@@ -121,6 +121,19 @@ CREATE TABLE set_tags (
     FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
+-- VIEW HISTORY
+CREATE TABLE view_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    set_id INT NOT NULL,
+    num_cards_viewed INT NOT NULL,
+    completed TINYINT(1) DEFAULT 0,
+    completed_at TIMESTAMP,
+    started_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (set_id) REFERENCES sets(id) ON DELETE CASCADE
+);
+
 -- Indexes
 CREATE INDEX idx_cards_set_id ON cards(set_id);
 CREATE INDEX idx_likes_user_id ON user_likes(user_id);

@@ -12,7 +12,7 @@ module.exports = (paramName, resourceType = 'user') => {
         });
 
         if (!req.user) {
-            console.log('Ownership check - No user found in request');
+
             return res.status(401).json({ message: 'Authentication required' });
         }
 
@@ -25,7 +25,7 @@ module.exports = (paramName, resourceType = 'user') => {
                     // For sets, check if user is the educator
                     const set = await db.Set.findByPk(resourceId);
                     if (!set) {
-                        console.log('Ownership check - Set not found:', resourceId);
+
                         return res.status(404).json({ message: 'Set not found' });
                     }
                     console.log('Ownership check - Set found:', {
@@ -35,7 +35,7 @@ module.exports = (paramName, resourceType = 'user') => {
                         isMatch: set.educator_id === userId
                     });
                     if (set.educator_id !== userId) {
-                        console.log('Ownership check - Access denied: User is not the educator');
+
                         return res.status(403).json({ message: 'Access denied' });
                     }
                     break;
@@ -49,13 +49,13 @@ module.exports = (paramName, resourceType = 'user') => {
                         isMatch: resourceId === userId
                     });
                     if (resourceId !== userId) {
-                        console.log('Ownership check - Access denied: User ID mismatch');
+
                         return res.status(403).json({ message: 'Access denied' });
                     }
                     break;
             }
 
-            console.log('Ownership check - Access granted');
+
             next();
         } catch (err) {
             console.error('Ownership check - Error:', err);

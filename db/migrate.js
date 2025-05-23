@@ -38,17 +38,17 @@ async function runMigrations() {
         // Run pending migrations
         for (const file of migrationFiles) {
             if (!executedMigrationNames.includes(file)) {
-                console.log(`Running migration: ${file}`);
+
                 const migration = require(path.join(migrationsDir, file));
                 await migration.up(sequelize.getQueryInterface(), Sequelize);
                 await sequelize.query(
                     'INSERT INTO SequelizeMeta (name) VALUES (?)', { replacements: [file] }
                 );
-                console.log(`Completed migration: ${file}`);
+
             }
         }
 
-        console.log('All migrations completed successfully');
+
         process.exit(0);
     } catch (error) {
         console.error('Migration failed:', error);

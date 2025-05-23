@@ -26,16 +26,6 @@ class PaginationService {
                 include = []
         } = options;
 
-        console.log('PaginationService.getPaginatedResults called with options:', {
-            where,
-            filters,
-            defaultSort,
-            defaultOrder,
-            query,
-            allowedSortFields,
-            include
-        });
-
         const page = parseInt(query.page) || 1;
         const limit = parseInt(query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -59,27 +49,11 @@ class PaginationService {
             }
         });
 
-        console.log('Final where clause:', whereClause);
-
         // Get total count with the same include conditions
         const total = await model.count({
             where: whereClause,
             include: include,
             distinct: true
-        });
-
-        // Get paginated results
-        console.log('Executing findAll with options:', {
-            where: whereClause,
-            order: [
-                [sortField, sortOrder]
-            ],
-            limit,
-            offset,
-            include,
-            raw: false,
-            nest: true,
-            plain: false
         });
 
         const items = await model.findAll({
@@ -95,12 +69,9 @@ class PaginationService {
             plain: false
         });
 
-        console.log('Raw items from findAll:', JSON.stringify(items, null, 2));
-
         // Transform the results to ensure proper nesting
         const transformedItems = items.map(item => {
             const plainItem = item.get({ plain: true });
-            console.log('Transformed item:', JSON.stringify(plainItem, null, 2));
             return plainItem;
         });
 
@@ -114,7 +85,6 @@ class PaginationService {
             }
         };
 
-        console.log('Final PaginationService result:', JSON.stringify(result, null, 2));
         return result;
     }
 

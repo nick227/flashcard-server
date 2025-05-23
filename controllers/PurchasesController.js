@@ -20,7 +20,6 @@ class PurchasesController extends ApiController {
 
     async list(req, res) {
         try {
-            console.log('PurchasesController.list called with query:', req.query);
 
             // Validate filter values
             if (req.query.setId && isNaN(parseInt(req.query.setId))) {
@@ -34,10 +33,6 @@ class PurchasesController extends ApiController {
             if (!req.query.userId && req.user) {
                 req.query.userId = req.user.id;
             }
-
-            console.log('Modified query:', req.query);
-
-            console.log('Calling PaginationService.getPaginatedResults');
             const result = await PaginationService.getPaginatedResults(this.model, {
                 filters: {
                     setId: 'set_id',
@@ -62,15 +57,15 @@ class PurchasesController extends ApiController {
                 } : {}
             })
 
-            console.log('Raw result from PaginationService:', JSON.stringify(result, null, 2));
+
 
             // Transform the results
             result.items = result.items.map(purchase => {
                 try {
-                    console.log('Processing purchase:', JSON.stringify(purchase, null, 2));
+
                     // Get the model instance data
                     const purchaseData = purchase.toJSON ? purchase.toJSON() : purchase
-                    console.log('Purchase data after toJSON:', JSON.stringify(purchaseData, null, 2));
+
 
                     // Ensure we have set data
                     if (!purchaseData.set) {
@@ -100,7 +95,6 @@ class PurchasesController extends ApiController {
                         }
                     }
 
-                    console.log('Transformed purchase:', JSON.stringify(transformed, null, 2))
                     return transformed
                 } catch (err) {
                     console.error(`Error transforming purchase ${purchase.id}:`, err)
@@ -108,7 +102,7 @@ class PurchasesController extends ApiController {
                 }
             }).filter(Boolean)
 
-            console.log('Final response:', JSON.stringify(result, null, 2));
+
             res.json(result)
         } catch (err) {
             console.error('Error in PurchasesController.list:', err)
@@ -181,7 +175,7 @@ class PurchasesController extends ApiController {
                     date: new Date()
                 });
 
-                console.log('Subscription session created:', session.id);
+
                 res.json({ url: session.url });
             } else {
                 // Create Stripe checkout session
@@ -216,7 +210,7 @@ class PurchasesController extends ApiController {
                     date: new Date()
                 });
 
-                console.log('Purchase session created:', session.id);
+
                 res.json({ url: session.url });
             }
         } catch (err) {

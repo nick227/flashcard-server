@@ -23,6 +23,7 @@ const categoriesRouter = require('./routes/categories');
 const checkoutRouter = require('./routes/checkout');
 const webhookRouter = require('./routes/webhook');
 const salesRouter = require('./routes/sales');
+const historyRouter = require('./routes/history');
 
 const port = process.env.PORT || 5000;
 
@@ -36,7 +37,7 @@ app.use(cors({
     origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : process.env.PRODUCTION_CLIENT_URL,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
     exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
@@ -196,6 +197,7 @@ app.use('/subscriptions', subscriptionsRouter);
 app.use('/userLikes', likesRouter);
 app.use('/purchases', purchasesRouter);
 app.use('/sales', salesRouter);
+app.use('/history', historyRouter);
 app.use('/tags', tagsRouter);
 app.use('/categories', categoriesRouter);
 app.use('/checkout', checkoutRouter);

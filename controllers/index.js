@@ -5,6 +5,7 @@ const LikesController = require('./LikesController')
 const SalesController = require('./SalesController')
 const CardsController = require('./CardsController')
 const AuthController = require('./AuthController')
+const HistoryController = require('./HistoryController')
 
 module.exports = {
     UsersController,
@@ -13,5 +14,6 @@ module.exports = {
     LikesController,
     SalesController,
     CardsController,
-    AuthController
+    AuthController,
+    HistoryController
 }

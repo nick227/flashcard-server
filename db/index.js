@@ -23,6 +23,7 @@ const Subscription = require('./models/subscription')(sequelize);
 const Tag = require('./models/tag')(sequelize);
 const SetTag = require('./models/setTag')(sequelize);
 const Transaction = require('./models/transaction')(sequelize);
+const History = require('./models/history')(sequelize);
 
 // Create models object for associations
 const models = {
@@ -36,7 +37,8 @@ const models = {
     Subscription,
     Tag,
     SetTag,
-    Transaction
+    Transaction,
+    History
 };
 
 // Set up associations
@@ -66,6 +68,13 @@ Transaction.belongsTo(User, { foreignKey: 'user_id' });
 
 Set.hasMany(Transaction, { foreignKey: 'set_id' });
 Transaction.belongsTo(Set, { foreignKey: 'set_id' });
+
+// History associations
+User.hasMany(History, { foreignKey: 'user_id' });
+History.belongsTo(User, { foreignKey: 'user_id' });
+
+Set.hasMany(History, { foreignKey: 'set_id' });
+History.belongsTo(Set, { foreignKey: 'set_id' });
 
 // Initialize model associations
 Object.values(models).forEach(model => {

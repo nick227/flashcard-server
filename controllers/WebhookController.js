@@ -12,7 +12,7 @@ class WebhookController extends ApiController {
             const sig = req.headers['stripe-signature'];
             const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
 
-            console.log('Webhook event received:', event.type);
+
 
             switch (event.type) {
                 case 'checkout.session.completed':
@@ -37,7 +37,7 @@ class WebhookController extends ApiController {
     }
 
     async handleCheckoutSessionCompleted(session) {
-        console.log('Processing completed checkout session:', session.id);
+
 
         if (session.metadata.type === 'subscription') {
             await this.handleSubscriptionSuccess(session);
@@ -81,7 +81,7 @@ class WebhookController extends ApiController {
                 });
             }
 
-            console.log('Subscription activated successfully:', session.subscription);
+
         } catch (err) {
             console.error('Error handling subscription success:', err);
             throw err;
@@ -107,7 +107,7 @@ class WebhookController extends ApiController {
                 throw new Error('Failed to create purchase record');
             }
 
-            console.log('Purchase recorded successfully:', session.id);
+
         } catch (err) {
             console.error('Error handling purchase success:', err);
             throw err;
@@ -115,11 +115,11 @@ class WebhookController extends ApiController {
     }
 
     async handleSubscriptionCreated(subscription) {
-        console.log('New subscription created:', subscription.id);
+
     }
 
     async handleSubscriptionUpdated(subscription) {
-        console.log('Subscription updated:', subscription.id);
+
 
         try {
             const updates = {
@@ -160,7 +160,7 @@ class WebhookController extends ApiController {
                 });
             }
 
-            console.log('Subscription status updated:', subscription.status);
+
         } catch (err) {
             console.error('Error updating subscription:', err);
             throw err;
@@ -168,7 +168,7 @@ class WebhookController extends ApiController {
     }
 
     async handleSubscriptionDeleted(subscription) {
-        console.log('Subscription deleted:', subscription.id);
+
 
         try {
             await this.model.sequelize.models.Subscription.update({
@@ -188,7 +188,7 @@ class WebhookController extends ApiController {
                 canceled_at: new Date()
             });
 
-            console.log('Subscription marked as deleted');
+
         } catch (err) {
             console.error('Error handling subscription deletion:', err);
             throw err;

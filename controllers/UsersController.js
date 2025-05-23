@@ -23,7 +23,7 @@ class UsersController extends ApiController {
                 attributes: ['id', 'name', 'email', 'bio', 'image', 'created_at', 'updated_at']
             });
 
-            console.log('Users found:', users.map(u => ({ id: u.id, name: u.name, bio: u.bio })));
+
             res.json(users);
         } catch (err) {
             console.error('Error listing users:', err);
@@ -53,7 +53,7 @@ class UsersController extends ApiController {
 
             const { name, bio } = req.body;
             const userId = req.user.id;
-            console.log('Updating user:', userId);
+
 
             // Get user with role included
             const user = await db.User.findOne({
@@ -62,7 +62,7 @@ class UsersController extends ApiController {
             });
 
             if (!user) {
-                console.log('User not found:', userId);
+
                 return res.status(404).json({ message: 'User not found' });
             }
 
@@ -102,7 +102,7 @@ class UsersController extends ApiController {
                     // Update the image path
                     await user.set({ image: imagePath });
                     await user.save();
-                    console.log('Image path updated:', imagePath);
+
                 } catch (err) {
                     console.error('Error handling file upload:', err);
                     return res.status(500).json({ message: 'Failed to process uploaded file' });
@@ -115,10 +115,10 @@ class UsersController extends ApiController {
             if (bio !== undefined) updateData.bio = bio;
 
             if (Object.keys(updateData).length > 0) {
-                console.log('Updating user with data:', updateData);
+
                 await user.set(updateData);
                 await user.save();
-                console.log('User updated successfully');
+
             }
 
             // Get fresh user data
@@ -132,7 +132,7 @@ class UsersController extends ApiController {
             }
 
             const formatted = responseFormatter.formatUser(updatedUser);
-            console.log('Sending response:', formatted);
+
             res.json(formatted);
         } catch (err) {
             console.error('Error in UsersController.update:', err);

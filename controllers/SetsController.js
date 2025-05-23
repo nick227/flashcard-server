@@ -10,8 +10,8 @@ class SetsController extends ApiController {
     constructor() {
         super('Set');
         this.setService = new SetService(this.model.sequelize.models);
-        console.log('--------------------------------------------------------');
-        console.log('--------------------------------------------------------');
+
+
     }
 
     // Convert relative path to full URL
@@ -155,8 +155,8 @@ class SetsController extends ApiController {
 
     async create(req, res) {
         try {
-            console.log('******SetsController.create - Request body:', req.body);
-            console.log('******SetsController.create - Request file:', req.file);
+
+
 
             // Ensure we have the required fields
             if (!req.body.title || !req.body.description || !req.body.categoryId) {
@@ -233,14 +233,14 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
-            console.log('--------------------------------------------------------');
-            console.log('SetsController.list - Starting request');
-            console.log('Request query:', req.query);
-            console.log('Request user:', req.user);
+
+
+
+
 
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
-                console.log('Validation errors:', errors);
+
                 return res.status(400).json(responseFormatter.formatError({
                     message: errors.join(', '),
                     errors
@@ -249,7 +249,7 @@ class SetsController extends ApiController {
 
             // Validate filter values
             if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
-                console.log('Invalid educator ID:', req.query.educatorId);
+
                 return res.status(400).json({ error: 'Invalid educator ID' });
             }
 
@@ -258,7 +258,7 @@ class SetsController extends ApiController {
                 userId: req.user ? req.user.id : null
             });
 
-            console.log('Parsed params:', params);
+
 
             // Build where clause for set type
             let whereClause = {};
@@ -307,7 +307,7 @@ class SetsController extends ApiController {
                     sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
                 } : this.parseSortParams(req.query.sortOrder || 'featured');
 
-                console.log('Sort params:', { sortBy, sortOrder });
+
 
                 // Handle liked sets
                 if (req.query.liked === 'true') {
@@ -318,25 +318,11 @@ class SetsController extends ApiController {
                         }));
                     }
 
-                    console.log('Handling liked sets for user:', {
-                        userId,
-                        query: req.query
-                    });
-
                     // For user profile: get only sets liked by current user
                     whereClause = {
                         ...whereClause
                     };
-                    console.log('Updated whereClause for liked sets:', whereClause);
                 }
-
-                console.log('Final whereClause:', whereClause);
-                console.log('Query params:', {
-                    ...params,
-                    category: categoryId,
-                    sortBy,
-                    sortOrder
-                });
 
                 const paginationOptions = {
                     where: whereClause,
@@ -375,14 +361,9 @@ class SetsController extends ApiController {
                     ]
                 };
 
-                console.log('Pagination options:', JSON.stringify(paginationOptions, null, 2));
+
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
-
-                console.log('Raw result:', {
-                    total: result.pagination.total,
-                    count: result.items.length
-                });
 
                 // Transform the results
                 result.items = result.items.map(set => {
@@ -393,6 +374,11 @@ class SetsController extends ApiController {
                             category: set.category && set.category.name || 'Uncategorized',
                             categoryId: set.category && set.category.id,
                             educatorName: set.educator && set.educator.name || 'Unknown',
+                            educator: set.educator ? {
+                                id: set.educator.id,
+                                name: set.educator.name,
+                                image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
+                            } : null,
                             image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
                             price: parseFloat(set.price) || 0
                         };
@@ -403,11 +389,6 @@ class SetsController extends ApiController {
                             error: 'Error transforming set data'
                         };
                     }
-                });
-
-                console.log('Final result:', {
-                    total: result.pagination.total,
-                    count: result.items.length
                 });
 
                 res.json(result);
@@ -425,11 +406,6 @@ class SetsController extends ApiController {
 
     async get(req, res) {
         try {
-            console.log('******SetsController.get - Starting request:', {
-                setId: req.params.id,
-                userId: req.user ? req.user.id : null,
-                headers: req.headers
-            });
 
             // Validate and parse the set ID
             const setId = parseInt(req.params.id, 10);
@@ -466,15 +442,6 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('******SetsController.get - Set retrieved:', {
-                setId: set.id,
-                price: set.price,
-                educatorId: set.educator_id,
-                userId: req.user ? req.user.id : null,
-                cardCount: set.cards ? set.cards.length : 0,
-                hasCards: !!set.cards
-            });
-
             // Get the set with access check
             const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
             return res.json(result);
@@ -509,6 +476,19 @@ class SetsController extends ApiController {
     async getLikesCount(req, res) {
         try {
             const count = await this.setService.getLikesCount(parseInt(req.params.id, 10));
+            res.json({ count });
+        } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async getViewsCount(req, res) {
+        try {
+            const count = await this.model.sequelize.models.ViewHistory.count({
+                where: {
+                    set_id: parseInt(req.params.id, 10)
+                }
+            });
             res.json({ count });
         } catch (err) {
             return this.handleError(err, res);

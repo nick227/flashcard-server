@@ -10,11 +10,6 @@ const setsController = new SetsController();
 
 // Add route logging middleware
 router.use((req, res, next) => {
-    console.log('Sets route - Request received:', {
-        method: req.method,
-        url: req.url,
-        contentType: req.headers['content-type']
-    });
     next();
 });
 
@@ -45,6 +40,14 @@ router.get('/:id', jwtAuth, (req, res) => setsController.get(req, res));
 // #swagger.responses[200] = { description: 'Like count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
 // #swagger.responses[404] = { description: 'Set not found' }
 router.get('/:id/likes', setsController.getLikesCount.bind(setsController));
+
+// GET /sets/:id/views
+// #swagger.tags = ['Sets']
+// #swagger.description = 'Get view count for a set'
+// #swagger.parameters['id'] = { description: 'Set ID' }
+// #swagger.responses[200] = { description: 'View count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
+// #swagger.responses[404] = { description: 'Set not found' }
+router.get('/:id/views', setsController.getViewsCount.bind(setsController));
 
 // GET /sets/:id/likes/user
 // #swagger.tags = ['Sets']
