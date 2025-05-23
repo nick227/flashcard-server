@@ -49,12 +49,17 @@ class PaginationService {
             }
         });
 
+        console.log('Pagination where clause:', JSON.stringify(whereClause, null, 2));
+        console.log('Pagination include:', JSON.stringify(include, null, 2));
+
         // Get total count with the same include conditions
         const total = await model.count({
             where: whereClause,
             include: include,
             distinct: true
         });
+
+        console.log('Total count:', total);
 
         const items = await model.findAll({
             where: whereClause,
@@ -68,6 +73,8 @@ class PaginationService {
             nest: true,
             plain: false
         });
+
+        console.log('Found items:', items.length);
 
         // Transform the results to ensure proper nesting
         const transformedItems = items.map(item => {

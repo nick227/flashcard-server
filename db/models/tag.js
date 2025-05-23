@@ -1,7 +1,19 @@
 const { Model, DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-    class Tag extends Model {}
+    class Tag extends Model {
+        static associate(models) {
+            Tag.belongsToMany(models.Set, {
+                through: {
+                    model: models.SetTag,
+                    timestamps: false
+                },
+                foreignKey: 'tag_id',
+                otherKey: 'set_id',
+                as: 'sets'
+            });
+        }
+    }
 
     Tag.init({
         id: {
@@ -18,10 +30,7 @@ module.exports = (sequelize) => {
         modelName: 'Tag',
         tableName: 'tags',
         timestamps: false,
-        underscored: true,
-        defaultScope: {
-            raw: true
-        }
+        underscored: true
     });
 
     return Tag;

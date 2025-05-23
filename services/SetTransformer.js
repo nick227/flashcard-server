@@ -5,7 +5,12 @@ class SetTransformer {
         if (!set) return null;
 
         try {
-            return {
+            console.log('SetTransformer.transformSet - Input set:', {
+                id: set.id,
+                tags: set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
+            });
+
+            const transformed = {
                 id: set.id,
                 title: set.title,
                 description: set.description,
@@ -20,6 +25,7 @@ class SetTransformer {
                 thumbnail: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
                 createdAt: set.created_at,
                 updatedAt: set.updated_at,
+                tags: set.tags ? set.tags.map(tag => tag.name) : [],
                 cards: set.cards ? set.cards.map(card => ({
                     id: card.id,
                     setId: card.set_id,
@@ -28,6 +34,13 @@ class SetTransformer {
                     hint: card.hint || undefined
                 })) : []
             };
+
+            console.log('SetTransformer.transformSet - Transformed set:', {
+                id: transformed.id,
+                tags: transformed.tags
+            });
+
+            return transformed;
         } catch (err) {
             console.error('Error transforming set:', err);
             throw new Error('Failed to transform set data');

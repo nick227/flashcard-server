@@ -42,10 +42,10 @@ class SetQueryBuilder {
                 attributes: ['id', 'name', 'email']
             },
             {
-                model: this.models.Card,
-                as: 'cards',
-                attributes: ['id', 'set_id', 'front', 'back', 'hint'],
-                required: false
+                model: this.models.Tag,
+                as: 'tags',
+                through: { attributes: [] },
+                attributes: ['id', 'name']
             }
         ];
     }
@@ -66,6 +66,14 @@ class SetQueryBuilder {
         if (options.educatorId) {
             query.where.educator_id = options.educatorId;
         }
+
+        console.log('SetQueryBuilder.buildListQuery - Query options:', {
+            include: query.include.map(i => ({
+                model: i.model.name,
+                as: i.as,
+                attributes: i.attributes
+            }))
+        });
 
         return query;
     }

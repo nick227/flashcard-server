@@ -197,6 +197,12 @@ class SetService {
                     as: 'cards',
                     attributes: ['id', 'set_id', 'front', 'back', 'hint'],
                     required: false
+                },
+                {
+                    model: this.Tag,
+                    as: 'tags',
+                    through: { attributes: [] }, // Don't include the join table attributes
+                    attributes: ['id', 'name']
                 }
             ]
         });
@@ -211,7 +217,9 @@ class SetService {
             price: set.price,
             educatorId: set.educator_id,
             userId,
-            cardCount: set.cards ? set.cards.length : 0
+            cardCount: set.cards ? set.cards.length : 0,
+            tagCount: set.tags ? set.tags.length : 0,
+            tags: set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
         });
 
         // Check access before returning the set

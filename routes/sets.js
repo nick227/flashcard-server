@@ -49,6 +49,14 @@ router.get('/:id/likes', setsController.getLikesCount.bind(setsController));
 // #swagger.responses[404] = { description: 'Set not found' }
 router.get('/:id/views', setsController.getViewsCount.bind(setsController));
 
+// GET /sets/:id/cards
+// #swagger.tags = ['Sets']
+// #swagger.description = 'Get card count for a set'
+// #swagger.parameters['id'] = { description: 'Set ID' }
+// #swagger.responses[200] = { description: 'Card count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
+// #swagger.responses[404] = { description: 'Set not found' }
+router.get('/:id/cards', setsController.getCardsCount.bind(setsController));
+
 // GET /sets/:id/likes/user
 // #swagger.tags = ['Sets']
 // #swagger.description = 'Get like status for current user'
@@ -159,5 +167,8 @@ router.post('/:id/toggle-hidden', jwtAuth, setsController.toggleHidden.bind(sets
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[404] = { description: 'Set not found' }
 router.post('/:id/like', jwtAuth, setsController.toggleLikeSet.bind(setsController));
+
+// POST /sets/:id/remove-tag
+router.post('/:id/remove-tag', jwtAuth, setsController.removeTag.bind(setsController));
 
 module.exports = router;

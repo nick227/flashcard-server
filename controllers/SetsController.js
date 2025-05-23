@@ -4,14 +4,14 @@ const SetValidationService = require('../services/SetValidationService');
 const SetTransformer = require('../services/SetTransformer');
 const responseFormatter = require('../services/ResponseFormatter');
 const PaginationService = require('../services/PaginationService');
+const SearchService = require('../services/SearchService');
 const { Op } = require('sequelize');
 
 class SetsController extends ApiController {
     constructor() {
         super('Set');
         this.setService = new SetService(this.model.sequelize.models);
-
-
+        this.searchService = new SearchService(this.model);
     }
 
     // Convert relative path to full URL
@@ -85,7 +85,8 @@ class SetsController extends ApiController {
             category: params.category,
             sortOrder: params.sortOrder || 'featured',
             educatorId: params.educatorId ? parseInt(params.educatorId, 10) : null,
-            userId: params.userId ? parseInt(params.userId, 10) : null
+            userId: params.userId ? parseInt(params.userId, 10) : null,
+            search: params.search || ''
         };
     }
 
@@ -155,9 +156,6 @@ class SetsController extends ApiController {
 
     async create(req, res) {
         try {
-
-
-
             // Ensure we have the required fields
             if (!req.body.title || !req.body.description || !req.body.categoryId) {
                 return res.status(400).json(responseFormatter.formatError({
@@ -233,14 +231,10 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
-
-
-
-
+            console.log('List request query:', req.query);
 
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
-
                 return res.status(400).json(responseFormatter.formatError({
                     message: errors.join(', '),
                     errors
@@ -249,7 +243,6 @@ class SetsController extends ApiController {
 
             // Validate filter values
             if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
-
                 return res.status(400).json({ error: 'Invalid educator ID' });
             }
 
@@ -258,7 +251,7 @@ class SetsController extends ApiController {
                 userId: req.user ? req.user.id : null
             });
 
-
+            console.log('Parsed params:', params);
 
             // Build where clause for set type
             let whereClause = {};
@@ -307,8 +300,6 @@ class SetsController extends ApiController {
                     sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
                 } : this.parseSortParams(req.query.sortOrder || 'featured');
 
-
-
                 // Handle liked sets
                 if (req.query.liked === 'true') {
                     const userId = req.query.userId || req.query.user_id;
@@ -318,10 +309,28 @@ class SetsController extends ApiController {
                         }));
                     }
 
-                    // For user profile: get only sets liked by current user
                     whereClause = {
                         ...whereClause
                     };
+                }
+
+                // Add search conditions if search query is provided
+                if (params.search) {
+                    console.log('Adding search conditions for query:', params.search);
+                    try {
+                        const searchConditions = this.searchService.buildSearchConditions(params.search);
+                        console.log('Search conditions:', JSON.stringify(searchConditions, null, 2));
+                        whereClause = {
+                            ...whereClause,
+                            ...searchConditions
+                        };
+                        console.log('Final where clause:', JSON.stringify(whereClause, null, 2));
+                    } catch (searchError) {
+                        console.error('Search error:', searchError);
+                        return res.status(400).json(responseFormatter.formatError({
+                            message: searchError.message
+                        }));
+                    }
                 }
 
                 const paginationOptions = {
@@ -357,13 +366,19 @@ class SetsController extends ApiController {
                             where: req.query.liked === 'true' ? {
                                 user_id: req.query.userId || req.query.user_id
                             } : undefined
+                        },
+                        {
+                            model: this.model.sequelize.models.Tag,
+                            as: 'tags',
+                            through: { attributes: [] },
+                            attributes: ['id', 'name']
                         }
                     ]
                 };
 
-
-
+                console.log('Pagination options:', JSON.stringify(paginationOptions, null, 2));
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
+                console.log('Search results count:', result.items.length);
 
                 // Transform the results
                 result.items = result.items.map(set => {
@@ -380,7 +395,8 @@ class SetsController extends ApiController {
                                 image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
                             } : null,
                             image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
-                            price: parseFloat(set.price) || 0
+                            price: parseFloat(set.price) || 0,
+                            tags: set.tags ? set.tags.map(tag => tag.name) : []
                         };
                     } catch (transformError) {
                         console.error('Error transforming set:', transformError);
@@ -395,7 +411,7 @@ class SetsController extends ApiController {
             } catch (paginationError) {
                 console.error('Error in pagination:', paginationError);
                 console.error('Error stack:', paginationError.stack);
-                throw paginationError; // Re-throw to be caught by outer try-catch
+                throw paginationError;
             }
         } catch (err) {
             console.error('SetsController.list - Error:', err);
@@ -406,7 +422,6 @@ class SetsController extends ApiController {
 
     async get(req, res) {
         try {
-
             // Validate and parse the set ID
             const setId = parseInt(req.params.id, 10);
             if (isNaN(setId)) {
@@ -414,6 +429,8 @@ class SetsController extends ApiController {
                     message: 'Invalid set ID'
                 }));
             }
+
+            console.log('SetsController.get - Fetching set:', setId);
 
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
@@ -432,8 +449,19 @@ class SetsController extends ApiController {
                         as: 'cards',
                         attributes: ['id', 'set_id', 'front', 'back', 'hint'],
                         required: false // Make it a LEFT JOIN to get sets even without cards
+                    },
+                    {
+                        model: this.model.sequelize.models.Tag,
+                        as: 'tags',
+                        through: { attributes: [] }, // Don't include the join table attributes
+                        attributes: ['id', 'name']
                     }
                 ]
+            });
+
+            console.log('SetsController.get - Set found:', {
+                id: set && set.id,
+                tags: set && set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
             });
 
             if (!set) {
@@ -444,7 +472,24 @@ class SetsController extends ApiController {
 
             // Get the set with access check
             const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
-            return res.json(result);
+
+            console.log('SetsController.get - Service result:', {
+                id: result.id,
+                tags: result.tags
+            });
+
+            // Transform the result to include tags
+            const transformedResult = {
+                ...result,
+                tags: set.tags ? set.tags.map(tag => tag.name) : []
+            };
+
+            console.log('SetsController.get - Final response:', {
+                id: transformedResult.id,
+                tags: transformedResult.tags
+            });
+
+            return res.json(transformedResult);
         } catch (err) {
             console.error('SetsController.get - Error:', err);
             console.error('Error stack:', err.stack);
@@ -473,25 +518,84 @@ class SetsController extends ApiController {
         }
     }
 
-    async getLikesCount(req, res) {
+    async getViewsCount(req, res) {
         try {
-            const count = await this.setService.getLikesCount(parseInt(req.params.id, 10));
-            res.json({ count });
+            const setId = parseInt(req.params.id, 10);
+            if (isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            console.log('Getting views count for set:', setId);
+            const result = await this.model.sequelize.models.History.count({
+                where: {
+                    set_id: setId
+                }
+            });
+
+            console.log('Views count result:', result);
+            return res.json({ count: result || 0 });
         } catch (err) {
-            return this.handleError(err, res);
+            console.error('SetsController.getViewsCount - Error:', err);
+            return res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to get views count',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
         }
     }
 
-    async getViewsCount(req, res) {
+    async getLikesCount(req, res) {
         try {
-            const count = await this.model.sequelize.models.ViewHistory.count({
+            const setId = parseInt(req.params.id, 10);
+            if (isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            console.log('Getting likes count for set:', setId);
+            const result = await this.model.sequelize.models.UserLike.count({
                 where: {
-                    set_id: parseInt(req.params.id, 10)
+                    set_id: setId
                 }
             });
-            res.json({ count });
+
+            console.log('Likes count result:', result);
+            return res.json({ count: result || 0 });
         } catch (err) {
-            return this.handleError(err, res);
+            console.error('SetsController.getLikesCount - Error:', err);
+            return res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to get likes count',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
+        }
+    }
+
+    async getCardsCount(req, res) {
+        try {
+            const setId = parseInt(req.params.id, 10);
+            if (isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            console.log('Getting cards count for set:', setId);
+            const result = await this.model.sequelize.models.Card.count({
+                where: {
+                    set_id: setId
+                }
+            });
+
+            console.log('Cards count result:', result);
+            return res.json({ count: result || 0 });
+        } catch (err) {
+            console.error('SetsController.getCardsCount - Error:', err);
+            return res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to get cards count',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
         }
     }
 
@@ -517,6 +621,47 @@ class SetsController extends ApiController {
             });
             return res.json({ liked: !!like });
         } catch (err) {
+            return this.handleError(err, res);
+        }
+    }
+
+    async removeTag(req, res) {
+        try {
+            const { setId, tagName } = req.body;
+            if (!setId || !tagName) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Set ID and tag name are required'
+                }));
+            }
+
+            const set = await this.model.findByPk(setId, {
+                include: [{
+                    model: this.model.sequelize.models.Tag,
+                    as: 'tags',
+                    through: { attributes: [] }
+                }]
+            });
+
+            if (!set) {
+                return res.status(404).json(responseFormatter.formatError({
+                    message: 'Set not found'
+                }));
+            }
+
+            const tag = await this.model.sequelize.models.Tag.findOne({
+                where: { name: tagName }
+            });
+
+            if (!tag) {
+                return res.status(404).json(responseFormatter.formatError({
+                    message: 'Tag not found'
+                }));
+            }
+
+            await set.removeTag(tag);
+            res.json(responseFormatter.formatSuccess('Tag removed successfully'));
+        } catch (err) {
+            console.error('SetsController.removeTag - Error:', err);
             return this.handleError(err, res);
         }
     }
