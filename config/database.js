@@ -6,20 +6,21 @@ console.log('Database Configuration:', {
     isProduction,
     NODE_ENV: process.env.NODE_ENV,
     RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
-    MYSQL_DATABASE: process.env.MYSQL_DATABASE,
-    MYSQLUSER: process.env.MYSQLUSER,
     MYSQLHOST: process.env.MYSQLHOST,
-    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT,
+    MYSQLPORT: process.env.MYSQLPORT,
+    MYSQLUSER: process.env.MYSQLUSER,
+    MYSQLPASSWORD: process.env.MYSQLPASSWORD,
+    MYSQLDATABASE: process.env.MYSQLDATABASE,
     MYSQL_URL: process.env.MYSQL_URL
 });
 
 // In Railway, we should always use the provided MySQL connection details
 const config = {
-    database: process.env.MYSQL_DATABASE || 'flashcard_academy',
+    database: process.env.MYSQLDATABASE || 'flashcard_academy',
     username: process.env.MYSQLUSER || 'root',
     password: process.env.MYSQLPASSWORD || '',
     host: process.env.MYSQLHOST || 'localhost',
-    port: process.env.RAILWAY_TCP_PROXY_PORT || 3306,
+    port: process.env.MYSQLPORT || 3306,
     dialect: 'mysql',
     pool: {
         max: 5,
