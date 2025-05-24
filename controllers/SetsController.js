@@ -231,7 +231,7 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
-            console.log('List request query:', req.query);
+
 
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
@@ -251,7 +251,7 @@ class SetsController extends ApiController {
                 userId: req.user ? req.user.id : null
             });
 
-            console.log('Parsed params:', params);
+
 
             // Build where clause for set type
             let whereClause = {};
@@ -316,15 +316,13 @@ class SetsController extends ApiController {
 
                 // Add search conditions if search query is provided
                 if (params.search) {
-                    console.log('Adding search conditions for query:', params.search);
+
                     try {
                         const searchConditions = this.searchService.buildSearchConditions(params.search);
-                        console.log('Search conditions:', JSON.stringify(searchConditions, null, 2));
                         whereClause = {
                             ...whereClause,
                             ...searchConditions
                         };
-                        console.log('Final where clause:', JSON.stringify(whereClause, null, 2));
                     } catch (searchError) {
                         console.error('Search error:', searchError);
                         return res.status(400).json(responseFormatter.formatError({
@@ -376,9 +374,8 @@ class SetsController extends ApiController {
                     ]
                 };
 
-                console.log('Pagination options:', JSON.stringify(paginationOptions, null, 2));
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
-                console.log('Search results count:', result.items.length);
+
 
                 // Transform the results
                 result.items = result.items.map(set => {
@@ -430,7 +427,7 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('SetsController.get - Fetching set:', setId);
+
 
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
@@ -459,11 +456,6 @@ class SetsController extends ApiController {
                 ]
             });
 
-            console.log('SetsController.get - Set found:', {
-                id: set && set.id,
-                tags: set && set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
-            });
-
             if (!set) {
                 return res.status(404).json(responseFormatter.formatError({
                     message: 'Set not found'
@@ -473,21 +465,11 @@ class SetsController extends ApiController {
             // Get the set with access check
             const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
 
-            console.log('SetsController.get - Service result:', {
-                id: result.id,
-                tags: result.tags
-            });
-
             // Transform the result to include tags
             const transformedResult = {
                 ...result,
                 tags: set.tags ? set.tags.map(tag => tag.name) : []
             };
-
-            console.log('SetsController.get - Final response:', {
-                id: transformedResult.id,
-                tags: transformedResult.tags
-            });
 
             return res.json(transformedResult);
         } catch (err) {
@@ -527,14 +509,14 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting views count for set:', setId);
+
             const result = await this.model.sequelize.models.History.count({
                 where: {
                     set_id: setId
                 }
             });
 
-            console.log('Views count result:', result);
+
             return res.json({ count: result || 0 });
         } catch (err) {
             console.error('SetsController.getViewsCount - Error:', err);
@@ -554,14 +536,14 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting likes count for set:', setId);
+
             const result = await this.model.sequelize.models.UserLike.count({
                 where: {
                     set_id: setId
                 }
             });
 
-            console.log('Likes count result:', result);
+
             return res.json({ count: result || 0 });
         } catch (err) {
             console.error('SetsController.getLikesCount - Error:', err);
@@ -581,14 +563,14 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting cards count for set:', setId);
+
             const result = await this.model.sequelize.models.Card.count({
                 where: {
                     set_id: setId
                 }
             });
 
-            console.log('Cards count result:', result);
+
             return res.json({ count: result || 0 });
         } catch (err) {
             console.error('SetsController.getCardsCount - Error:', err);

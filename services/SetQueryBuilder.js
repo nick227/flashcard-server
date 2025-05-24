@@ -67,14 +67,6 @@ class SetQueryBuilder {
             query.where.educator_id = options.educatorId;
         }
 
-        console.log('SetQueryBuilder.buildListQuery - Query options:', {
-            include: query.include.map(i => ({
-                model: i.model.name,
-                as: i.as,
-                attributes: i.attributes
-            }))
-        });
-
         return query;
     }
 

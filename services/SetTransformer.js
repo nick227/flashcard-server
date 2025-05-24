@@ -5,11 +5,6 @@ class SetTransformer {
         if (!set) return null;
 
         try {
-            console.log('SetTransformer.transformSet - Input set:', {
-                id: set.id,
-                tags: set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
-            });
-
             const transformed = {
                 id: set.id,
                 title: set.title,
@@ -34,11 +29,6 @@ class SetTransformer {
                     hint: card.hint || undefined
                 })) : []
             };
-
-            console.log('SetTransformer.transformSet - Transformed set:', {
-                id: transformed.id,
-                tags: transformed.tags
-            });
 
             return transformed;
         } catch (err) {

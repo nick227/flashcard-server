@@ -72,15 +72,10 @@ class SetAccessService {
     }
 
     async checkOwnershipOrAdmin(set, userId) {
-        console.log('SetAccessService.checkOwnershipOrAdmin - Starting:', {
-            setId: set.id,
-            educatorId: set.educator_id,
-            userId
-        });
 
         // Set creator has access
         if (set.educator_id === userId) {
-            console.log('SetAccessService.checkOwnershipOrAdmin - User is set creator, granting access');
+
             return {
                 hasAccess: true,
                 setType: 'owned',
@@ -91,13 +86,9 @@ class SetAccessService {
 
         // Only check admin status if not the creator
         const user = await this.getUser(userId);
-        console.log('SetAccessService.checkOwnershipOrAdmin - User role:', {
-            userId,
-            roleId: user.role_id
-        });
 
         if (user.role_id === 2) { // 2 is admin role
-            console.log('SetAccessService.checkOwnershipOrAdmin - User is admin, granting access');
+
             return {
                 hasAccess: true,
                 setType: 'admin',
@@ -106,19 +97,14 @@ class SetAccessService {
             };
         }
 
-        console.log('SetAccessService.checkOwnershipOrAdmin - User is neither creator nor admin');
+
         return null;
     }
 
     async checkPurchaseAccess(set, userId) {
-        console.log('SetAccessService.checkPurchaseAccess - Starting:', {
-            setId: set.id,
-            userId,
-            setPrice: set.price
-        });
 
         if (set.price <= 0) {
-            console.log('SetAccessService.checkPurchaseAccess - Free set, skipping purchase check');
+
             return null;
         }
 
@@ -130,13 +116,8 @@ class SetAccessService {
             attributes: ['id', 'user_id', 'set_id', 'date']
         });
 
-        console.log('SetAccessService.checkPurchaseAccess - Purchase lookup result:', {
-            found: !!purchase,
-            purchase: purchase ? purchase.toJSON() : null
-        });
-
         if (purchase) {
-            console.log('SetAccessService.checkPurchaseAccess - Purchase found, granting access');
+
             return {
                 hasAccess: true,
                 setType: 'purchased',
@@ -145,7 +126,7 @@ class SetAccessService {
             };
         }
 
-        console.log('SetAccessService.checkPurchaseAccess - No purchase found');
+
         return null;
     }
 
@@ -181,23 +162,18 @@ class SetAccessService {
 
     async checkAccess(setId, userId) {
         try {
-            console.log('SetAccessService.checkAccess - Starting:', { setId, userId });
+
 
             // Validate inputs
             const { parsedSetId, parsedUserId } = this.validateInputs(setId, userId);
-            console.log('SetAccessService.checkAccess - Parsed inputs:', { parsedSetId, parsedUserId });
+
 
             // Get set data
             const set = await this.getSet(parsedSetId);
-            console.log('SetAccessService.checkAccess - Set data:', {
-                id: set.id,
-                price: set.price,
-                isSubscriberOnly: set.isSubscriberOnly
-            });
 
             // Free sets are always accessible
             if (set.price === 0 && !set.isSubscriberOnly) {
-                console.log('SetAccessService.checkAccess - Free set, granting access');
+
                 return {
                     hasAccess: true,
                     setType: 'free',
@@ -208,14 +184,14 @@ class SetAccessService {
 
             // For premium or subscriber sets, require authentication
             if (!parsedUserId) {
-                console.log('SetAccessService.checkAccess - No user ID, denying access');
+
                 return SetAccessService.createAccessDeniedResponse(set);
             }
 
             // Check ownership or admin access
             const ownershipOrAdminAccess = await this.checkOwnershipOrAdmin(set, parsedUserId);
             if (ownershipOrAdminAccess) {
-                console.log('SetAccessService.checkAccess - Ownership/admin access granted');
+
                 return ownershipOrAdminAccess;
             }
 
@@ -223,24 +199,24 @@ class SetAccessService {
             let accessResult;
 
             if (set.price > 0) {
-                console.log('SetAccessService.checkAccess - Checking purchase access');
+
                 accessResult = await this.checkPurchaseAccess(set, parsedUserId);
                 if (accessResult) {
-                    console.log('SetAccessService.checkAccess - Purchase access granted');
+
                     return accessResult;
                 }
             }
 
             if (set.isSubscriberOnly) {
-                console.log('SetAccessService.checkAccess - Checking subscription access');
+
                 accessResult = await this.checkSubscriptionAccess(parsedUserId, set.educator_id);
                 if (accessResult) {
-                    console.log('SetAccessService.checkAccess - Subscription access granted');
+
                     return accessResult;
                 }
             }
 
-            console.log('SetAccessService.checkAccess - All access checks failed, denying access');
+
             return SetAccessService.createAccessDeniedResponse(set);
         } catch (error) {
             console.error('SetAccessService.checkAccess - Error:', error);

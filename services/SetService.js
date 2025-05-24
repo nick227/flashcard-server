@@ -178,7 +178,7 @@ class SetService {
     }
 
     async getSet(setId, userId = null, preRetrievedSet = null) {
-        console.log('SetService.getSet - Starting:', { setId, userId });
+
 
         // Use pre-retrieved set if provided, otherwise fetch it
         const set = preRetrievedSet || await this.Set.findByPk(setId, {
@@ -208,34 +208,23 @@ class SetService {
         });
 
         if (!set) {
-            console.log('SetService.getSet - Set not found');
+
             throw new SetNotFoundError();
         }
 
-        console.log('SetService.getSet - Set found:', {
-            setId: set.id,
-            price: set.price,
-            educatorId: set.educator_id,
-            userId,
-            cardCount: set.cards ? set.cards.length : 0,
-            tagCount: set.tags ? set.tags.length : 0,
-            tags: set.tags ? set.tags.map(t => ({ id: t.id, name: t.name })) : []
-        });
-
         // Check access before returning the set
-        console.log('SetService.getSet - Checking access');
         const accessResult = await this.accessService.checkAccess(setId, userId);
-        console.log('SetService.getSet - Access check result:', accessResult);
+
 
         if (!accessResult.hasAccess) {
-            console.log('SetService.getSet - Access denied, returning with access details');
+
             return {
                 ...SetTransformer.transformSet(set),
                 access: accessResult
             };
         }
 
-        console.log('SetService.getSet - Access granted, returning set');
+
         return SetTransformer.transformSet(set);
     }
 

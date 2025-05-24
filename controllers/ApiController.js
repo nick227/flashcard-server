@@ -36,7 +36,7 @@ class ApiController {
             const options = {
                 raw: true, // Ensure we get plain objects
                 logging: (sql, timing) => {
-                    //console.log('Generated SQL:', sql);
+                    //console.log('Generated SQL:', sql, 'Timing:', timing);
                 }
             };
 

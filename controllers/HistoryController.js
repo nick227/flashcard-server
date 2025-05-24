@@ -134,9 +134,6 @@ class HistoryController extends ApiController {
                 updateData.completed_at = new Date();
             }
 
-            // Log the update data for debugging
-            console.log('Updating history with data:', updateData);
-
             // Update the record using Sequelize's update method
             const [updatedCount] = await this.model.update(updateData, {
                 where: {

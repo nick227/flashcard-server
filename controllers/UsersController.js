@@ -33,23 +33,6 @@ class UsersController extends ApiController {
 
     async update(req, res) {
         try {
-            console.log('UsersController.update - Starting update:', {
-                userId: req.user ? req.user.id : null,
-                body: req.body,
-                file: req.file ? {
-                    fieldname: req.file.fieldname,
-                    originalname: req.file.originalname,
-                    mimetype: req.file.mimetype,
-                    size: req.file.size,
-                    filename: req.file.filename,
-                    path: req.file.path
-                } : null,
-                headers: {
-                    'content-type': req.headers['content-type'],
-                    'content-length': req.headers['content-length'],
-                    'authorization': req.headers.authorization ? 'Bearer [HIDDEN]' : 'none'
-                }
-            });
 
             const { name, bio } = req.body;
             const userId = req.user.id;
@@ -68,15 +51,6 @@ class UsersController extends ApiController {
 
             // Handle file upload if present
             if (req.file) {
-                console.log('Processing file upload:', {
-                    fieldname: req.file.fieldname,
-                    originalname: req.file.originalname,
-                    mimetype: req.file.mimetype,
-                    size: req.file.size,
-                    filename: req.file.filename,
-                    path: req.file.path
-                });
-
                 try {
                     // Update user with new image path - use full URL
                     const baseUrl = process.env.NODE_ENV === 'development' ?
