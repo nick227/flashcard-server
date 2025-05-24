@@ -1,7 +1,9 @@
 class ResponseFormatter {
     constructor() {
-        // Always use the full server URL for development
-        this.baseUrl = 'http://localhost:5000';
+        // Use environment-based URL
+        this.baseUrl = process.env.NODE_ENV === 'production' ?
+            process.env.PRODUCTION_URL || 'https://flashcard-server-production.up.railway.app' :
+            'http://localhost:5000';
     }
 
     convertPathToUrl(path) {

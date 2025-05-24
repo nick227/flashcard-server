@@ -20,8 +20,9 @@ const doc = {
         description: 'API documentation for backend endpoints.',
         version: '1.0.0',
     },
-    host: 'localhost:5000',
-    schemes: ['http'],
+    host: process.env.NODE_ENV === 'production' ?
+        'flashcard-server-production.up.railway.app' : 'localhost:5000',
+    schemes: process.env.NODE_ENV === 'production' ? ['https'] : ['http'],
     securityDefinitions: {
         bearerAuth: {
             type: 'http',

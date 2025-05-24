@@ -66,7 +66,10 @@ class FileService {
             }
 
             // Return full URL instead of relative path
-            const fullUrl = `http://localhost:5000/images/${this.SETS_DIR}/${setId}/${filename}`;
+            const baseUrl = process.env.NODE_ENV === 'production' ?
+                process.env.PRODUCTION_URL || 'https://flashcard-server-production.up.railway.app' :
+                'http://localhost:5000';
+            const fullUrl = `${baseUrl}/images/${this.SETS_DIR}/${setId}/${filename}`;
             return { relativePath: fullUrl };
         } catch (err) {
             // Clean up on error
