@@ -41,13 +41,14 @@ const cleanUrl = (url) => {
 };
 
 // CORS middleware
+const allowedOrigins = [
+    'https://flashcard-client-phi.vercel.app',
+    'https://flashcard-academy.vercel.app',
+    'https://flashcard-client-git-main-nick227s-projects.vercel.app'
+];
+
 app.use(cors({
-    origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
-        'https://flashcard-client-phi.vercel.app',
-        'https://flashcard-academy.vercel.app',
-        'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-        cleanUrl(process.env.PRODUCTION_CLIENT_URL)
-    ].filter(Boolean),
+    origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
@@ -65,12 +66,7 @@ app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, 
 });
 
 // Helmet configuration
-const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
-    'https://flashcard-client-phi.vercel.app',
-    'https://flashcard-academy.vercel.app',
-    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    cleanUrl(process.env.PRODUCTION_CLIENT_URL)
-].filter(Boolean);
+const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins;
 
 const isSecure = process.env.NODE_ENV === 'production';
 
@@ -251,13 +247,7 @@ app.listen(port, '0.0.0.0', () => {
         railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
         railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
         railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
-        productionClientUrl: cleanUrl(process.env.PRODUCTION_CLIENT_URL),
-        corsOrigins: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
-            'https://flashcard-client-phi.vercel.app',
-            'https://flashcard-academy.vercel.app',
-            'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-            cleanUrl(process.env.PRODUCTION_CLIENT_URL)
-        ].filter(Boolean)
+        corsOrigins: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins
     });
     console.log(`Server running on port ${port}!!!`);
 });
