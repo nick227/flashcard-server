@@ -39,7 +39,7 @@ app.use(cors({
         'https://flashcard-client-phi.vercel.app',
         'https://flashcard-academy.vercel.app',
         'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-        process.env.PRODUCTION_CLIENT_URL
+        process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
     ].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -62,7 +62,7 @@ const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost
     'https://flashcard-client-phi.vercel.app',
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    process.env.PRODUCTION_CLIENT_URL
+    process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
 ].filter(Boolean);
 
 const isSecure = process.env.NODE_ENV === 'production';
@@ -249,7 +249,7 @@ app.listen(port, '0.0.0.0', () => {
             'https://flashcard-client-phi.vercel.app',
             'https://flashcard-academy.vercel.app',
             'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-            process.env.PRODUCTION_CLIENT_URL
+            process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
         ].filter(Boolean)
     });
     console.log(`Server running on port ${port}!!!`);
