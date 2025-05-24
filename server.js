@@ -36,7 +36,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // Clean environment variables
 const cleanUrl = (url) => {
     if (!url) return null;
-    return url.replace(/[;\/]+$/, ''); // Remove trailing semicolons and slashes
+    // Remove all semicolons and trailing slashes
+    return url.replace(/;/g, '').replace(/\/+$/, '');
 };
 
 // CORS middleware
