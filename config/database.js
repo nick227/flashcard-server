@@ -1,5 +1,5 @@
 // Force production mode in Railway
-const isProduction = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+const isProduction = process.env.RAILWAY_ENVIRONMENT_NAME === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
 
 // In Railway, we should always use the provided MySQL connection details
 const config = {

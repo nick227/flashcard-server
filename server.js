@@ -38,6 +38,7 @@ app.use(cors({
     origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
         'https://flashcard-client-phi.vercel.app',
         'https://flashcard-academy.vercel.app',
+        'https://flashcard-client-git-main-nick227s-projects.vercel.app',
         process.env.PRODUCTION_CLIENT_URL
     ].filter(Boolean),
     credentials: true,
@@ -57,7 +58,12 @@ app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, 
 });
 
 // Helmet configuration
-const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [process.env.PRODUCTION_CLIENT_URL];
+const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
+    'https://flashcard-client-phi.vercel.app',
+    'https://flashcard-academy.vercel.app',
+    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+    process.env.PRODUCTION_CLIENT_URL
+].filter(Boolean);
 
 const isSecure = process.env.NODE_ENV === 'production';
 
@@ -235,9 +241,16 @@ app.listen(port, '0.0.0.0', () => {
         port,
         host: '0.0.0.0',
         environment: process.env.NODE_ENV,
-        railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+        railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
         railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
-        railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN
+        railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
+        productionClientUrl: process.env.PRODUCTION_CLIENT_URL,
+        corsOrigins: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
+            'https://flashcard-client-phi.vercel.app',
+            'https://flashcard-academy.vercel.app',
+            'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+            process.env.PRODUCTION_CLIENT_URL
+        ].filter(Boolean)
     });
     console.log(`Server running on port ${port}!!!`);
 });
