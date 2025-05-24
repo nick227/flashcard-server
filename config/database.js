@@ -1,8 +1,9 @@
 module.exports = {
-    database: 'flashcard_academy',
-    username: 'root',
-    password: '',
-    host: 'localhost',
+    database: process.env.MYSQL_DATABASE || 'flashcard_academy',
+    username: process.env.MYSQLUSER || 'root',
+    password: process.env.MYSQLPASSWORD || '',
+    host: process.env.MYSQLHOST || 'localhost',
+    port: process.env.MYSQLPORT || process.env.RAILWAY_TCP_PROXY_PORT || 3306,
     dialect: 'mysql',
     pool: {
         max: 5,
