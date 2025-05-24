@@ -10,7 +10,11 @@ console.log('Database Configuration:', {
     MYSQL_PORT: process.env.MYSQL_PORT,
     MYSQL_USER: process.env.MYSQL_USER,
     MYSQL_PASSWORD: process.env.MYSQL_PASSWORD,
-    MYSQL_DATABASE: process.env.MYSQL_DATABASE
+    MYSQL_DATABASE: process.env.MYSQL_DATABASE,
+    MYSQL_URL: process.env.MYSQL_URL,
+    RAILWAY_PRIVATE_DOMAIN: process.env.RAILWAY_PRIVATE_DOMAIN,
+    RAILWAY_TCP_PROXY_DOMAIN: process.env.RAILWAY_TCP_PROXY_DOMAIN,
+    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT
 });
 
 // In Railway, we should always use the provided MySQL connection details
