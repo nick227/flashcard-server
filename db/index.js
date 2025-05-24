@@ -1,6 +1,15 @@
 const { Sequelize } = require('sequelize');
 const config = require('../config/database');
 
+// Debug logging
+console.log('Database connection config:', {
+    database: config.database,
+    username: config.username,
+    host: config.host,
+    port: config.port,
+    dialect: config.dialect
+});
+
 const sequelize = new Sequelize(
     config.database,
     config.username,
@@ -8,7 +17,7 @@ const sequelize = new Sequelize(
         host: config.host,
         port: config.port,
         dialect: config.dialect,
-        logging: false,
+        logging: console.log, // Enable logging temporarily
         dialectOptions: config.dialectOptions
     }
 );
