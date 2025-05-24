@@ -28,15 +28,6 @@ const historyRouter = require('./routes/history');
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
 
-console.log('Environment:', {
-    NODE_ENV: process.env.NODE_ENV,
-    RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
-    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT,
-    PORT: process.env.PORT,
-    RAILWAY_PRIVATE_DOMAIN: process.env.RAILWAY_PRIVATE_DOMAIN,
-    RAILWAY_TCP_PROXY_DOMAIN: process.env.RAILWAY_TCP_PROXY_DOMAIN
-});
-
 // Swagger setup
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger-output.json');
@@ -57,8 +48,6 @@ app.use(cors({
 
 // Add request logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    console.log('Request Headers:', req.headers);
     next();
 });
 

@@ -85,14 +85,21 @@ class AuthService {
         const userRole = await db.UserRole.findByPk(role_id);
         const role = userRole ? userRole.name : null;
 
+        const { accessToken, refreshToken } = this.generateTokens(user);
+
         return {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role,
-            image: user.image,
-            created_at: user.created_at,
-            updated_at: user.updated_at
+            token: accessToken, // For backward compatibility
+            accessToken,
+            refreshToken,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role,
+                image: user.image,
+                created_at: user.created_at,
+                updated_at: user.updated_at
+            }
         };
     }
 

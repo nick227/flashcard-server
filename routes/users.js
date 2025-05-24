@@ -19,6 +19,13 @@ router.use((req, res, next) => {
     next();
 });
 
+// GET /users/name-exists
+// #swagger.tags = ['Users']
+// #swagger.description = 'Check if a username exists'
+// #swagger.parameters['name'] = { in: 'query', description: 'Username to check' }
+// #swagger.responses[200] = { description: 'Name existence check result', schema: { type: 'object', properties: { exists: { type: 'boolean' } } } }
+router.get('/name-exists', (req, res) => usersController.nameExists(req, res));
+
 // GET /users/me
 // #swagger.tags = ['Users']
 // #swagger.description = 'Get current user profile'

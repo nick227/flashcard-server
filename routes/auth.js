@@ -15,7 +15,9 @@ router.use((req, res, next) => {
     console.log('Auth route - Request received:', {
         method: req.method,
         url: req.url,
-        contentType: req.headers['content-type']
+        contentType: req.headers['content-type'],
+        body: req.body,
+        headers: req.headers
     });
     next();
 });
@@ -26,7 +28,11 @@ router.use((req, res, next) => {
 // #swagger.parameters['body'] = { in: 'body', description: 'User registration data', schema: { $ref: '#/definitions/UserRegistration' } }
 // #swagger.responses[201] = { description: 'User registered successfully', schema: { $ref: '#/definitions/User' } }
 // #swagger.responses[400] = { description: 'Invalid input data' }
-router.post('/register', (req, res) => authController.register(req, res));
+router.post('/register', (req, res) => {
+    console.log('Register request body:', req.body);
+    console.log('Register request headers:', req.headers);
+    authController.register(req, res);
+});
 
 // POST /auth/login
 // #swagger.tags = ['Auth']
