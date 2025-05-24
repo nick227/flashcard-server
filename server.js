@@ -33,13 +33,19 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger-output.json');
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
+// Clean environment variables
+const cleanUrl = (url) => {
+    if (!url) return null;
+    return url.replace(/[;\/]+$/, ''); // Remove trailing semicolons and slashes
+};
+
 // CORS middleware
 app.use(cors({
     origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
         'https://flashcard-client-phi.vercel.app',
         'https://flashcard-academy.vercel.app',
         'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-        process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
+        cleanUrl(process.env.PRODUCTION_CLIENT_URL)
     ].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -62,7 +68,7 @@ const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost
     'https://flashcard-client-phi.vercel.app',
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
+    cleanUrl(process.env.PRODUCTION_CLIENT_URL)
 ].filter(Boolean);
 
 const isSecure = process.env.NODE_ENV === 'production';
@@ -244,12 +250,12 @@ app.listen(port, '0.0.0.0', () => {
         railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
         railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
         railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
-        productionClientUrl: process.env.PRODUCTION_CLIENT_URL,
+        productionClientUrl: cleanUrl(process.env.PRODUCTION_CLIENT_URL),
         corsOrigins: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [
             'https://flashcard-client-phi.vercel.app',
             'https://flashcard-academy.vercel.app',
             'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-            process.env.PRODUCTION_CLIENT_URL ? process.env.PRODUCTION_CLIENT_URL.replace(/\/$/, '') : null
+            cleanUrl(process.env.PRODUCTION_CLIENT_URL)
         ].filter(Boolean)
     });
     console.log(`Server running on port ${port}!!!`);
