@@ -87,7 +87,7 @@ class UsersController extends ApiController {
 
     async update(req, res) {
         try {
-            const { name } = req.body;
+            const { name, bio } = req.body;
             const userId = req.user.id;
 
             // Get user with role included
@@ -137,6 +137,7 @@ class UsersController extends ApiController {
             // Update other fields if provided
             const updateData = {};
             if (name) updateData.name = name;
+            if (bio !== undefined) updateData.bio = bio;
 
             if (Object.keys(updateData).length > 0) {
                 await user.set(updateData);

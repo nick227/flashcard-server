@@ -19,6 +19,7 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     role_id INT NOT NULL DEFAULT 1, -- Default to member role
     image VARCHAR(255),
+    bio TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (role_id) REFERENCES user_roles(id)
