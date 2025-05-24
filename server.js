@@ -25,7 +25,17 @@ const webhookRouter = require('./routes/webhook');
 const salesRouter = require('./routes/sales');
 const historyRouter = require('./routes/history');
 
-const port = process.env.PORT || 5000;
+// Use Railway's port or fallback to 5000 for local development
+const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
+
+console.log('Environment:', {
+    NODE_ENV: process.env.NODE_ENV,
+    RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
+    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT,
+    PORT: process.env.PORT,
+    RAILWAY_PRIVATE_DOMAIN: process.env.RAILWAY_PRIVATE_DOMAIN,
+    RAILWAY_TCP_PROXY_DOMAIN: process.env.RAILWAY_TCP_PROXY_DOMAIN
+});
 
 // Swagger setup
 const swaggerUi = require('swagger-ui-express');
@@ -44,6 +54,13 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
     exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
+
+// Add request logging middleware
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log('Request Headers:', req.headers);
+    next();
+});
 
 // CSP Report endpoint
 app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
@@ -213,7 +230,9 @@ app.use((err, req, res, next) => {
         error: err.message,
         stack: err.stack,
         method: req.method,
-        url: req.url
+        url: req.url,
+        headers: req.headers,
+        body: req.body
     });
     res.status(err.status || 500).json({
         message: err.message || 'Internal server error',
@@ -223,5 +242,13 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
+    console.log('Server startup details:', {
+        port,
+        host: '0.0.0.0',
+        environment: process.env.NODE_ENV,
+        railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+        railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
+        railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN
+    });
+    console.log(`Server running on port ${port}!!!`);
 });
