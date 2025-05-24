@@ -75,9 +75,8 @@ class UsersController extends ApiController {
 
             const users = await db.User.findAll({
                 where: whereClause,
-                attributes: ['id', 'name', 'email', 'bio', 'image', 'created_at', 'updated_at']
+                attributes: ['id', 'name', 'email', 'image', 'created_at', 'updated_at']
             });
-
 
             res.json(users);
         } catch (err) {
@@ -88,10 +87,8 @@ class UsersController extends ApiController {
 
     async update(req, res) {
         try {
-
-            const { name, bio } = req.body;
+            const { name } = req.body;
             const userId = req.user.id;
-
 
             // Get user with role included
             const user = await db.User.findOne({
@@ -100,7 +97,6 @@ class UsersController extends ApiController {
             });
 
             if (!user) {
-
                 return res.status(404).json({ message: 'User not found' });
             }
 
@@ -141,13 +137,10 @@ class UsersController extends ApiController {
             // Update other fields if provided
             const updateData = {};
             if (name) updateData.name = name;
-            if (bio !== undefined) updateData.bio = bio;
 
             if (Object.keys(updateData).length > 0) {
-
                 await user.set(updateData);
                 await user.save();
-
             }
 
             // Get fresh user data
