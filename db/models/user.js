@@ -29,6 +29,10 @@ module.exports = (sequelize) => {
         image: {
             type: DataTypes.STRING
         },
+        bio: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
         created_at: {
             type: DataTypes.DATE,
             allowNull: false,

@@ -68,7 +68,7 @@ class AuthService {
 
     // Register
     async register(userData) {
-        const { name, email, password, role_id, image } = userData;
+        const { name, email, password, role_id } = userData;
 
         if (!name || !email || !password || !role_id) {
             throw new Error('Missing required fields');
@@ -80,7 +80,12 @@ class AuthService {
         }
 
         const hash = await bcrypt.hash(password, 10);
-        const user = await db.User.create({ name, email, password: hash, role_id, image });
+        const user = await db.User.create({
+            name,
+            email,
+            password: hash,
+            role_id
+        });
 
         const userRole = await db.UserRole.findByPk(role_id);
         const role = userRole ? userRole.name : null;
