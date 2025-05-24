@@ -19,7 +19,7 @@ console.log('Database Configuration:', {
 
 // In Railway, we should always use the provided MySQL connection details
 const config = {
-    database: process.env.MYSQL_DATABASE || 'flashcard_academy',
+    database: process.env.MYSQL_DATABASE || 'railway',
     username: process.env.MYSQL_USER || 'root',
     password: process.env.MYSQL_PASSWORD || '',
     host: process.env.MYSQL_HOST || 'localhost',
