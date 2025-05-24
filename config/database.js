@@ -1,31 +1,47 @@
-const isProduction = process.env.NODE_ENV === 'production';
+// Force production mode in Railway
+const isProduction = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
 
 // Debug logging
-console.log('Environment:', {
+console.log('Database Configuration:', {
+    isProduction,
     NODE_ENV: process.env.NODE_ENV,
+    RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
     MYSQL_DATABASE: process.env.MYSQL_DATABASE,
     MYSQLUSER: process.env.MYSQLUSER,
     MYSQLHOST: process.env.MYSQLHOST,
-    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT
+    RAILWAY_TCP_PROXY_PORT: process.env.RAILWAY_TCP_PROXY_PORT,
+    MYSQL_URL: process.env.MYSQL_URL
 });
 
-module.exports = {
-    database: isProduction ? process.env.MYSQL_DATABASE : (process.env.MYSQL_DATABASE || 'flashcard_academy'),
-    username: isProduction ? process.env.MYSQLUSER : (process.env.MYSQLUSER || 'root'),
-    password: isProduction ? process.env.MYSQLPASSWORD : (process.env.MYSQLPASSWORD || ''),
-    host: isProduction ? process.env.MYSQLHOST : (process.env.MYSQLHOST || 'localhost'),
-    port: isProduction ? process.env.RAILWAY_TCP_PROXY_PORT : (process.env.RAILWAY_TCP_PROXY_PORT || 3306),
+// In Railway, we should always use the provided MySQL connection details
+const config = {
+    database: process.env.MYSQL_DATABASE || 'flashcard_academy',
+    username: process.env.MYSQLUSER || 'root',
+    password: process.env.MYSQLPASSWORD || '',
+    host: process.env.MYSQLHOST || 'localhost',
+    port: process.env.RAILWAY_TCP_PROXY_PORT || 3306,
     dialect: 'mysql',
     pool: {
         max: 5,
         min: 0,
         acquire: 30000,
         idle: 10000
-    },
-    dialectOptions: isProduction ? {
+    }
+};
+
+// Only add SSL in production
+if (isProduction) {
+    config.dialectOptions = {
         ssl: {
             require: true,
             rejectUnauthorized: false
         }
-    } : undefined
-};
+    };
+}
+
+console.log('Final database config:', {
+    ...config,
+    password: config.password ? '[REDACTED]' : undefined
+});
+
+module.exports = config;

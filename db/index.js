@@ -2,12 +2,13 @@ const { Sequelize } = require('sequelize');
 const config = require('../config/database');
 
 // Debug logging
-console.log('Database connection config:', {
+console.log('Attempting database connection with config:', {
     database: config.database,
     username: config.username,
     host: config.host,
     port: config.port,
-    dialect: config.dialect
+    dialect: config.dialect,
+    hasSSL: Boolean(config.dialectOptions && config.dialectOptions.ssl)
 });
 
 const sequelize = new Sequelize(
@@ -17,7 +18,7 @@ const sequelize = new Sequelize(
         host: config.host,
         port: config.port,
         dialect: config.dialect,
-        logging: console.log, // Enable logging temporarily
+        logging: (msg) => console.log('Sequelize:', msg),
         dialectOptions: config.dialectOptions
     }
 );
@@ -96,8 +97,23 @@ Object.values(models).forEach(model => {
 
 // Test database connection
 sequelize.authenticate()
-    .then(() => console.log('Database connection established successfully.'))
-    .catch(err => console.error('Unable to connect to the database:', err));
+    .then(() => {
+        console.log('Database connection established successfully.');
+        console.log('Connection details:', {
+            host: config.host,
+            port: config.port,
+            database: config.database
+        });
+    })
+    .catch(err => {
+        console.error('Unable to connect to the database:', err);
+        console.error('Connection attempt details:', {
+            host: config.host,
+            port: config.port,
+            database: config.database,
+            error: err.message
+        });
+    });
 
 module.exports = {
     sequelize,
