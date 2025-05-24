@@ -20,7 +20,8 @@ module.exports = (sequelize) => {
         },
         name: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
+            unique: true
         },
         role_id: {
             type: DataTypes.INTEGER,
@@ -31,7 +32,7 @@ module.exports = (sequelize) => {
         },
         bio: {
             type: DataTypes.TEXT,
-            allowNull: true
+            allowNull: false
         },
         created_at: {
             type: DataTypes.DATE,
