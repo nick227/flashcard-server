@@ -240,8 +240,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(port, '0.0.0.0', () => {
-    const origins = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] :
-        allowedOrigins;
+    const origins = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins;
 
     console.log('NEW Server startup details:', {
         port,
