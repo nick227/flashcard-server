@@ -3,4 +3,5 @@
 /private
 .env
 /uploads
+/public
 .vscode

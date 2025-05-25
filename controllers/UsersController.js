@@ -75,7 +75,7 @@ class UsersController extends ApiController {
 
             const users = await db.User.findAll({
                 where: whereClause,
-                attributes: ['id', 'name', 'email', 'image', 'created_at', 'updated_at']
+                attributes: ['id', 'name', 'email', 'image', 'bio', 'created_at', 'updated_at']
             });
 
             res.json(users);
