@@ -70,7 +70,7 @@ class AuthService {
     async register(userData) {
         const { name, email, password, role_id, bio } = userData;
 
-        if (!name || !email || !password || !role_id || !bio) {
+        if (!name || !email || !password || !role_id) {
             throw new Error('Missing required fields');
         }
 
@@ -85,7 +85,7 @@ class AuthService {
             email,
             password: hash,
             role_id,
-            bio
+            bio: bio || null
         });
 
         const userRole = await db.UserRole.findByPk(role_id);

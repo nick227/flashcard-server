@@ -44,7 +44,9 @@ const cleanUrl = (url) => {
 const allowedOrigins = [
     'https://flashcard-client-phi.vercel.app',
     'https://flashcard-academy.vercel.app',
-    'https://flashcard-client-git-main-nick227s-projects.vercel.app'
+    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
 ];
 
 app.use(cors({
@@ -249,7 +251,7 @@ app.listen(port, '0.0.0.0', () => {
         railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
         railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
         railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
-        corsOrigins: origins.join(', ') // Join array elements with commas for cleaner logging
+        corsOrigins: origins // Log the array directly
     });
     console.log(`Server running on port ${port}!!!`);
 });
