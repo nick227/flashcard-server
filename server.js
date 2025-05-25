@@ -67,6 +67,9 @@ app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, 
     res.status(204).end();
 });
 
+// Ping endpoint
+app.get('/ping', (req, res) => res.json({ ok: true, time: new Date() }));
+
 // Helmet configuration
 const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins;
 
