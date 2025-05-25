@@ -28,6 +28,15 @@ const historyRouter = require('./routes/history');
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+const allowedOrigins = isProduction ? [
+    'https://flashcard-client-phi.vercel.app',
+    'https://flashcard-academy.vercel.app',
+    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
+] : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
 // Swagger setup
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger-output.json');
@@ -41,16 +50,8 @@ const cleanUrl = (url) => {
 };
 
 // CORS middleware
-const allowedOrigins = [
-    'https://flashcard-client-phi.vercel.app',
-    'https://flashcard-academy.vercel.app',
-    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
-];
-
 app.use(cors({
-    origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins,
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
@@ -71,18 +72,15 @@ app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, 
 app.get('/ping', (req, res) => res.json({ ok: true, time: new Date() }));
 
 // Helmet configuration
-const clientOrigin = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins;
-
-const isSecure = process.env.NODE_ENV === 'production';
-
 app.use(
     helmet({
         contentSecurityPolicy: {
+            useDefaults: false,
+            reportOnly: !isProduction,
             directives: {
-                defaultSrc: ["'self'", ...clientOrigin],
+                defaultSrc: ["'self'"],
                 scriptSrc: [
                     "'self'",
-                    ...clientOrigin,
                     "'unsafe-inline'",
                     "'unsafe-eval'",
                     'https://js.stripe.com',
@@ -92,54 +90,46 @@ app.use(
                 ],
                 styleSrc: [
                     "'self'",
-                    ...clientOrigin,
                     "'unsafe-inline'",
                     'https://fonts.googleapis.com'
                 ],
                 imgSrc: [
                     "'self'",
-                    ...clientOrigin,
                     'data:',
                     'blob:',
                     'https://*.stripe.com'
                 ],
                 fontSrc: [
                     "'self'",
-                    ...clientOrigin,
                     'https://fonts.gstatic.com',
                     'data:'
                 ],
                 connectSrc: [
                     "'self'",
-                    ...clientOrigin,
                     'https://api.stripe.com',
                     'https://*.stripe.com',
                     'https://*.stripe.network'
                 ],
                 frameSrc: [
                     "'self'",
-                    ...clientOrigin,
                     'https://js.stripe.com',
                     'https://m.stripe.network',
                     'https://*.stripe.com'
                 ],
-                objectSrc: ["'none'"],
-                mediaSrc: ["'self'", ...clientOrigin],
-                formAction: ["'self'", ...clientOrigin],
-                workerSrc: ["'self'", 'blob:', ...clientOrigin],
-                childSrc: ["'self'", 'blob:', ...clientOrigin],
-                baseUri: ["'self'", ...clientOrigin],
-                manifestSrc: ["'self'", ...clientOrigin]
-            },
-            useDefaults: false
+                formAction: ["'self'"],
+                baseUri: ["'self'"],
+                workerSrc: ["'self'", 'blob:'],
+                manifestSrc: ["'self'"],
+                reportUri: '/csp-report'
+            }
         },
-        crossOriginEmbedderPolicy: true,
+        crossOriginEmbedderPolicy: false,
         crossOriginOpenerPolicy: true,
-        crossOriginResourcePolicy: { policy: "same-site" },
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
         dnsPrefetchControl: true,
-        frameguard: { action: "sameorigin" },
+        frameguard: { action: 'sameorigin' },
         hidePoweredBy: true,
-        hsts: isSecure ? {
+        hsts: isProduction ? {
             maxAge: 31536000,
             includeSubDomains: true,
             preload: true
@@ -148,7 +138,7 @@ app.use(
         noSniff: true,
         originAgentCluster: true,
         permittedCrossDomainPolicies: true,
-        referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
         xssFilter: true
     })
 );
@@ -245,8 +235,6 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(port, '0.0.0.0', () => {
-    const origins = process.env.NODE_ENV === 'development' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : allowedOrigins;
-
     console.log('NEW Server startup details:', {
         port,
         host: '0.0.0.0',
@@ -254,7 +242,7 @@ app.listen(port, '0.0.0.0', () => {
         railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
         railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
         railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
-        corsOrigins: origins // Log the array directly
+        corsOrigins: allowedOrigins
     });
     console.log(`Server running on port ${port}!!!`);
 });
