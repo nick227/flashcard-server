@@ -110,4 +110,7 @@ router.get('/me', jwtAuth, async(req, res) => {
     }
 });
 
+// POST /auth/google
+router.post('/google', authController.handleGoogleAuth.bind(authController));
+
 module.exports = router;
