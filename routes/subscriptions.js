@@ -42,4 +42,7 @@ router.get('/subscribers', jwtAuth, async(req, res) => {
 // Cancel subscription
 router.delete('/:educatorId', jwtAuth, SubscriptionsController.cancelSubscription.bind(SubscriptionsController));
 
+// Create subscription
+router.post('/:educatorId', jwtAuth, SubscriptionsController.createSubscription.bind(SubscriptionsController));
+
 module.exports = router;

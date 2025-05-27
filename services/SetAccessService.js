@@ -130,7 +130,7 @@ class SetAccessService {
         return null;
     }
 
-    async checkSubscriptionAccess(userId, educatorId) {
+    async checkSubscriptionAccess(userId, educatorId, set) {
         try {
             const subscription = await this.Subscription.findOne({
                 where: {
@@ -139,7 +139,15 @@ class SetAccessService {
                 },
                 attributes: ['id', 'user_id', 'educator_id', 'date']
             });
-            return !!subscription;
+            if (subscription) {
+                return {
+                    hasAccess: true,
+                    setType: 'subscribed',
+                    setTitle: set.title,
+                    setId: set.id
+                };
+            }
+            return null;
         } catch (error) {
             console.error('SetAccessService.checkSubscriptionAccess - Error:', error);
             throw error;
@@ -209,7 +217,7 @@ class SetAccessService {
 
             if (set.isSubscriberOnly) {
 
-                accessResult = await this.checkSubscriptionAccess(parsedUserId, set.educator_id);
+                accessResult = await this.checkSubscriptionAccess(parsedUserId, set.educator_id, set);
                 if (accessResult) {
 
                     return accessResult;

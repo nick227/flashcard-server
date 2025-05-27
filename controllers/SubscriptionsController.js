@@ -61,6 +61,39 @@ class SubscriptionsController extends ApiController {
             res.status(500).json({ error: 'Failed to cancel subscription' });
         }
     }
+
+    async createSubscription(req, res) {
+        const { educatorId } = req.params;
+        try {
+            // Prevent self-subscription
+            if (req.user.id === parseInt(educatorId)) {
+                return res.status(400).json({ error: 'Cannot subscribe to yourself' });
+            }
+
+            // Check if subscription already exists
+            const existingSubscription = await this.model.findOne({
+                where: {
+                    user_id: req.user.id,
+                    educator_id: educatorId
+                }
+            });
+
+            if (existingSubscription) {
+                return res.status(200).json({ message: 'Already subscribed' });
+            }
+
+            // Create new subscription
+            const subscription = await this.model.create({
+                user_id: req.user.id,
+                educator_id: educatorId
+            });
+
+            res.status(201).json(subscription);
+        } catch (err) {
+            console.error('Error creating subscription:', err);
+            res.status(500).json({ error: 'Failed to create subscription' });
+        }
+    }
 }
 
 module.exports = new SubscriptionsController();
