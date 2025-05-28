@@ -13,6 +13,7 @@ class SetTransformer {
                 categoryId: set.category ? set.category.id : null,
                 educatorId: set.educator_id,
                 educatorName: set.educator ? set.educator.name : 'Unknown',
+                educatorImage: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
                 price: parseFloat(set.price) || 0,
                 isSubscriberOnly: Boolean(set.is_subscriber_only),
                 featured: Boolean(set.featured),

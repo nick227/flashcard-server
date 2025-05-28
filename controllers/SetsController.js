@@ -354,7 +354,7 @@ class SetsController extends ApiController {
                         {
                             model: this.model.sequelize.models.User,
                             as: 'educator',
-                            attributes: ['id', 'name', 'email']
+                            attributes: ['id', 'name', 'email', 'image']
                         },
                         {
                             model: this.model.sequelize.models.UserLike,
@@ -439,7 +439,7 @@ class SetsController extends ApiController {
                     {
                         model: this.model.sequelize.models.User,
                         as: 'educator',
-                        attributes: ['id', 'name', 'email']
+                        attributes: ['id', 'name', 'email', 'image']
                     },
                     {
                         model: this.model.sequelize.models.Card,
