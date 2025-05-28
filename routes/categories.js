@@ -7,7 +7,8 @@ const router = express.Router();
 
 // GET /categories
 // #swagger.tags = ['Categories']
-// #swagger.description = 'Get all categories'
+// #swagger.description = 'Get all categories or only categories in use by sets'
+// #swagger.parameters['inUse'] = { in: 'query', description: 'Filter to only show categories in use by sets', required: false, type: 'boolean' }
 // #swagger.responses[200] = { description: 'List of categories', schema: { type: 'array', items: { $ref: '#/definitions/Category' } } }
 router.get('/', categoriesController.list.bind(categoriesController));
 
