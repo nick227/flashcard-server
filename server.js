@@ -24,6 +24,7 @@ const checkoutRouter = require('./routes/checkout');
 const webhookRouter = require('./routes/webhook');
 const salesRouter = require('./routes/sales');
 const historyRouter = require('./routes/history');
+const aiRouter = require('./routes/ai.routes');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -203,19 +204,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // Routes
-app.use('/auth', authRouter);
-app.use('/users', usersRouter);
-app.use('/sets', setsRouter);
-app.use('/cards', cardsRouter);
-app.use('/subscriptions', subscriptionsRouter);
-app.use('/userLikes', likesRouter);
-app.use('/purchases', purchasesRouter);
-app.use('/sales', salesRouter);
-app.use('/history', historyRouter);
-app.use('/tags', tagsRouter);
-app.use('/categories', categoriesRouter);
-app.use('/checkout', checkoutRouter);
-app.use('/webhook', webhookRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/sets', setsRouter);
+app.use('/api/cards', cardsRouter);
+app.use('/api/subscriptions', subscriptionsRouter);
+app.use('/api/likes', likesRouter);
+app.use('/api/purchases', purchasesRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/tags', tagsRouter);
+app.use('/api/categories', categoriesRouter);
+app.use('/api/checkout', checkoutRouter);
+app.use('/api/webhook', webhookRouter);
+app.use('/api/sales', salesRouter);
+app.use('/api/history', historyRouter);
+app.use('/api/ai', aiRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
