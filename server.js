@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const app = express();
 const passport = require('passport');
@@ -25,6 +26,7 @@ const webhookRouter = require('./routes/webhook');
 const salesRouter = require('./routes/sales');
 const historyRouter = require('./routes/history');
 const aiRouter = require('./routes/ai.routes');
+const thumbnailRouter = require('./routes/thumbnail');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -37,6 +39,20 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+// Rate limiting configuration
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later',
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    // Skip rate limiting for webhook routes
+    skip: (req) => req.path.startsWith('/api/webhook')
+});
+
+// Apply rate limiting to all routes
+app.use('/api', apiLimiter);
 
 // Swagger setup
 const swaggerUi = require('swagger-ui-express');
@@ -218,6 +234,7 @@ app.use('/api/webhook', webhookRouter);
 app.use('/api/sales', salesRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/thumbnail', thumbnailRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

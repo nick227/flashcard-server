@@ -16,6 +16,7 @@
         "json-server": "^1.0.0-beta.3"
     },
     "dependencies": {
+        "axios": "^1.9.0",
         "bcrypt": "^6.0.0",
         "body-parser": "^2.2.0",
         "cors": "^2.8.5",
@@ -24,6 +25,7 @@
         "express-rate-limit": "^7.5.0",
         "express-session": "^1.18.1",
         "helmet": "^8.1.0",
+        "ioredis": "^5.6.1",
         "jsonwebtoken": "^9.0.2",
         "lodash": "^4.17.21",
         "multer": "^1.4.5-lts.2",
@@ -37,6 +39,7 @@
         "swagger-autogen": "^2.23.7",
         "swagger-jsdoc": "^6.2.8",
         "swagger-ui-express": "^5.0.1",
-        "yamljs": "^0.3.0"
+        "yamljs": "^0.3.0",
+        "cloudinary": "^2.0.1"
     }
 }

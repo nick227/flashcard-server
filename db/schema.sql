@@ -29,6 +29,23 @@ CREATE TABLE users (
     FOREIGN KEY (role_id) REFERENCES user_roles(id)
 );
 
+-- OPENAI REQUESTS
+CREATE TABLE openai_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    prompt_tokens INT NOT NULL,
+    completion_tokens INT NOT NULL,
+    total_tokens INT NOT NULL,
+    model VARCHAR(50) NOT NULL DEFAULT 'gpt-4',
+    prompt TEXT NOT NULL,
+    response TEXT NOT NULL,
+    status ENUM('pending', 'success', 'failed', 'rate_limited', 'timeout') NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    duration_ms INT UNSIGNED,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- CATEGORIES
 CREATE TABLE categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -137,18 +154,6 @@ CREATE TABLE view_history (
     started_at TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (set_id) REFERENCES sets(id) ON DELETE CASCADE
-);
-
--- USER ACTIVITY
-CREATE TABLE user_activity (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    action VARCHAR(50) NOT NULL,
-    provider VARCHAR(50) NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_timestamp (timestamp)
 );
 
 -- Indexes

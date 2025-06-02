@@ -36,6 +36,7 @@ const Tag = require('./models/tag')(sequelize);
 const SetTag = require('./models/setTag')(sequelize);
 const Transaction = require('./models/transaction')(sequelize);
 const History = require('./models/history')(sequelize);
+const OpenAIRequest = require('./models/openaiRequest')(sequelize);
 
 // Create models object for associations
 const models = {
@@ -50,7 +51,8 @@ const models = {
     Tag,
     SetTag,
     Transaction,
-    History
+    History,
+    OpenAIRequest
 };
 
 // Set up associations

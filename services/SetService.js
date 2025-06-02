@@ -41,6 +41,14 @@ class SetService {
     }
 
     async createSet(setData, cards, tags, file) {
+        console.log('SetService.createSet - Input data:', {
+            setData,
+            cardsCount: cards.length,
+            tagsCount: tags ? tags.length : 0,
+            fileType: file ? (typeof file) : 'null',
+            fileValue: file ? (typeof file === 'string' ? file : 'File object') : 'null'
+        });
+
         // Validate data
         const errors = SetValidationService.validateSetData(setData);
         if (errors.length > 0) {
@@ -63,6 +71,10 @@ class SetService {
         try {
             // Create the set
             const set = await this.Set.create(setData, { transaction });
+            console.log('SetService.createSet - Set created:', {
+                id: set.id,
+                title: set.title
+            });
 
             // Handle tags
             if (tags) {
@@ -71,6 +83,11 @@ class SetService {
 
             // Handle file upload
             if (file) {
+                console.log('SetService.createSet - Handling file upload:', {
+                    fileType: typeof file,
+                    isObject: typeof file === 'object',
+                    hasPath: file && typeof file === 'object' && 'path' in file
+                });
                 await this.handleFileUpload(set, file);
             }
 
@@ -238,7 +255,7 @@ class SetService {
     }
 
     async toggleLike(setId, userId) {
-        const transaction = await this.Set.sequelize.transaction();
+        const transaction = await this.models.UserLike.sequelize.transaction();
         try {
             const existingLike = await this.models.UserLike.findOne({
                 where: { set_id: setId, user_id: userId },
@@ -284,8 +301,36 @@ class SetService {
     }
 
     async handleFileUpload(set, file) {
-        const fileInfo = await fileService.moveUploadedFile(file, set.id);
-        await set.update({ thumbnail: fileInfo.relativePath });
+        console.log('SetService.handleFileUpload - Input:', {
+            setId: set.id,
+            fileType: typeof file,
+            isObject: typeof file === 'object',
+            hasPath: file && typeof file === 'object' && 'path' in file,
+            isString: typeof file === 'string',
+            stringValue: typeof file === 'string' ? file : 'N/A'
+        });
+
+        if (file && typeof file === 'object' && file.path) {
+            // This is a file upload
+            console.log('SetService.handleFileUpload - Processing file upload');
+            const fileInfo = await fileService.moveUploadedFile(file, set.id);
+            console.log('SetService.handleFileUpload - File info:', fileInfo);
+            await set.update({ thumbnail: fileInfo.relativePath });
+        } else if (typeof file === 'string' && file.trim()) {
+            // This is a URL (from AI generation)
+            console.log('SetService.handleFileUpload - Processing URL:', file);
+            await set.update({ thumbnail: file });
+        } else {
+            console.error('SetService.handleFileUpload - Invalid file data:', file);
+            throw new SetValidationError('Invalid thumbnail data');
+        }
+
+        // Verify the update
+        const updatedSet = await this.Set.findByPk(set.id);
+        console.log('SetService.handleFileUpload - Updated set:', {
+            id: updatedSet.id,
+            thumbnail: updatedSet.thumbnail
+        });
     }
 
     async createCards(set, cards, transaction) {

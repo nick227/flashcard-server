@@ -163,6 +163,14 @@ class SetsController extends ApiController {
                 }));
             }
 
+            console.log('SetsController.create - Request body:', {
+                title: req.body.title,
+                description: req.body.description,
+                categoryId: req.body.categoryId,
+                thumbnailUrl: req.body.thumbnailUrl,
+                file: req.file ? 'File present' : 'No file'
+            });
+
             const setData = {
                 title: req.body.title,
                 description: req.body.description,
@@ -192,7 +200,20 @@ class SetsController extends ApiController {
                 }
             }
 
-            const set = await this.setService.createSet(setData, cards, tags, req.file);
+            // Handle thumbnail (either file or URL)
+            const thumbnail = req.file || req.body.thumbnailUrl;
+            console.log('SetsController.create - Thumbnail data:', {
+                type: thumbnail ? (typeof thumbnail) : 'null',
+                value: thumbnail ? (typeof thumbnail === 'string' ? thumbnail : 'File object') : 'null'
+            });
+
+            if (!thumbnail) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Thumbnail is required'
+                }));
+            }
+
+            const set = await this.setService.createSet(setData, cards, tags, thumbnail);
             return res.json(set);
         } catch (err) {
             console.error('SetsController.create - Error:', err);
@@ -222,7 +243,10 @@ class SetsController extends ApiController {
                 }
             }
 
-            const set = await this.setService.updateSet(req.params.id, setData, cards, tags, req.file);
+            // Handle thumbnail (either file or URL)
+            const thumbnail = req.file || req.body.thumbnailUrl;
+
+            const set = await this.setService.updateSet(req.params.id, setData, cards, tags, thumbnail);
             return res.json(set);
         } catch (err) {
             return this.handleError(err, res);

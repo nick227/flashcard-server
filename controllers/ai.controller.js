@@ -1,9 +1,12 @@
 const AIService = require('../services/ai.service')
+const db = require('../db')
+const { Op } = require('sequelize')
 
 class AIController {
     static async generateCards(req, res) {
         try {
             const { title, description } = req.body
+            const userId = req.user.id
 
             // Input validation
             if (!title || !description) {
@@ -34,26 +37,29 @@ class AIController {
                 })
             }
 
-            // Check if user has permission to use AI features
-            if (!req.user) {
-                return res.status(401).json({
-                    message: 'Authentication required'
+            // Get user's usage for current period
+            const periodStart = new Date()
+            periodStart.setHours(0, 0, 0, 0)
+
+            const usageCount = await db.OpenAIRequest.count({
+                where: {
+                    user_id: userId,
+                    created_at: {
+                        [Op.gte]: periodStart
+                    }
+                }
+            })
+
+            // Simple daily limit of 10 generations
+            const DAILY_LIMIT = 10
+            if (usageCount >= DAILY_LIMIT) {
+                return res.status(429).json({
+                    message: `Daily limit of ${DAILY_LIMIT} generations reached. Please try again tomorrow.`
                 })
             }
 
-            // Check if user has active subscription if required
-            if (process.env.REQUIRE_SUBSCRIPTION === 'true' && !req.user.is_subscriber) {
-                return res.status(403).json({
-                    message: 'Active subscription required to use AI features'
-                })
-            }
-
-            const cards = await AIService.generateCards(trimmedTitle, trimmedDescription)
-
-            // Validate response
-            if (!cards || !Array.isArray(cards.front) || !Array.isArray(cards.back)) {
-                throw new Error('Invalid response from AI service')
-            }
+            // Generate cards
+            const cards = await AIService.generateCards(trimmedTitle, trimmedDescription, userId)
 
             res.json(cards)
         } catch (error) {
@@ -62,7 +68,7 @@ class AIController {
             // Handle specific error types
             if (error.message.includes('rate limit')) {
                 return res.status(429).json({
-                    message: error.message
+                    message: 'Too many requests. Please try again later.'
                 })
             }
 
@@ -74,18 +80,12 @@ class AIController {
 
             if (error.message.includes('timeout')) {
                 return res.status(504).json({
-                    message: 'AI service request timed out'
+                    message: 'Request timed out. Please try again.'
                 })
             }
 
-            if (error.message.includes('connection')) {
-                return res.status(503).json({
-                    message: 'AI service is currently unavailable'
-                })
-            }
-
-            res.status(500).json({
-                message: error.message || 'Failed to generate flashcards'
+            res.status(error.status || 500).json({
+                message: error.message || 'Failed to generate cards'
             })
         }
     }
