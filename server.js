@@ -37,14 +37,15 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-client-phi.vercel.app',
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
-    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
+    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
+    'https://flashcardacademy.vercel.app' // Add your production domain
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isProduction ? 100 : 1000, // More lenient in development
-    message: 'Too many requests from this IP, please try again later',
+    max: isProduction ? 500 : 1000, // Increased limit for production
+    message: { error: 'Too many requests from this IP, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
     // Skip rate limiting for webhook routes
@@ -66,27 +67,29 @@ const cleanUrl = (url) => {
     return url.replace(/;/g, '').replace(/\/+$/, '');
 };
 
-// CORS middleware
+// CORS middleware with better error handling
 app.use(cors({
     origin: function(origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
 
+        // Check if origin is in allowed list
         if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
+            console.warn('CORS blocked request from origin:', origin);
+            return callback(new Error('Not allowed by CORS'), false);
         }
         return callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range']
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400 // 24 hours
 }));
 
-// Add request logging middleware
+// Add request logging middleware with more details
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url} - Origin: ${req.headers.origin}`);
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - Origin: ${req.headers.origin} - IP: ${req.ip}`);
     next();
 });
 
@@ -185,8 +188,30 @@ const publicDir = path.join(__dirname, 'public/images');
     }
 });
 
-// Serve static files from public directory
-app.use('/images', express.static(path.join(__dirname, 'public/images')));
+// Add middleware to ensure HTTPS for image URLs
+app.use((req, res, next) => {
+    if (isProduction && req.path.startsWith('/images/')) {
+        // Ensure the request is using HTTPS
+        if (req.headers['x-forwarded-proto'] !== 'https') {
+            return res.redirect(`https://${req.headers.host}${req.url}`);
+        }
+    }
+    next();
+});
+
+// Serve static files from public directory with security headers
+app.use('/images', express.static(path.join(__dirname, 'public/images'), {
+    setHeaders: (res, path) => {
+        // Add security headers for images
+        res.set({
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cache-Control': 'public, max-age=31536000', // 1 year
+            'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline';"
+        });
+    }
+}));
 
 // Add error handling for static files
 app.use((err, req, res, next) => {
@@ -249,16 +274,38 @@ app.use('/api/thumbnail', thumbnailRouter);
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Global error handler:', {
+        timestamp: new Date().toISOString(),
         error: err.message,
         stack: err.stack,
         method: req.method,
         url: req.url,
+        origin: req.headers.origin,
+        ip: req.ip,
         headers: req.headers,
         body: req.body
     });
+
+    // Handle CORS errors specifically
+    if (err.message === 'Not allowed by CORS') {
+        return res.status(403).json({
+            error: 'CORS Error',
+            message: 'Not allowed by CORS policy',
+            origin: req.headers.origin
+        });
+    }
+
+    // Handle rate limit errors
+    if (err.status === 429) {
+        return res.status(429).json({
+            error: 'Rate Limit Exceeded',
+            message: 'Too many requests, please try again later'
+        });
+    }
+
     res.status(err.status || 500).json({
-        message: err.message || 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? err : {}
+        error: err.name || 'Internal Server Error',
+        message: err.message || 'An unexpected error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
 });
 
@@ -273,5 +320,5 @@ app.listen(port, '0.0.0.0', () => {
         railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
         corsOrigins: allowedOrigins
     });
-    console.log(`Server running on port ${port}!!!`);
+    console.log(`Server running on port ${port}`);
 });
