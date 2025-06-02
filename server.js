@@ -38,15 +38,15 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app'
-] : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: isProduction ? 100 : 1000, // More lenient in development
     message: 'Too many requests from this IP, please try again later',
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    standardHeaders: true,
+    legacyHeaders: false,
     // Skip rate limiting for webhook routes
     skip: (req) => req.path.startsWith('/api/webhook')
 });
@@ -68,7 +68,16 @@ const cleanUrl = (url) => {
 
 // CORS middleware
 app.use(cors({
-    origin: allowedOrigins,
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
@@ -77,6 +86,7 @@ app.use(cors({
 
 // Add request logging middleware
 app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url} - Origin: ${req.headers.origin}`);
     next();
 });
 
