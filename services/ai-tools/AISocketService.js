@@ -76,13 +76,20 @@ class AISocketService {
     }
 
     initialize(server) {
+        console.log('Initializing socket server with environment:', process.env.NODE_ENV)
+
         this.io = new Server(server, {
             cors: {
                 origin: process.env.NODE_ENV === 'production' ? ['https://flashcardacademy.vercel.app', 'https://www.flashcardacademy.vercel.app'] : ['http://localhost:5173'],
                 credentials: true,
                 methods: ['GET', 'POST'],
                 allowedHeaders: ['Content-Type', 'Authorization']
-            }
+            },
+            path: '/socket.io/',
+            transports: ['websocket', 'polling'],
+            pingTimeout: 60000,
+            pingInterval: 25000,
+            connectTimeout: 10000
         })
 
         // Add authentication middleware
@@ -92,14 +99,14 @@ class AISocketService {
         this.io.use(this.checkRateLimit.bind(this))
 
         this.io.on('connection', (socket) => {
-            console.log('Client connected:', socket.id, 'User:', socket.user.id)
+            console.log('Client connected:', socket.id, 'User:', socket.user.id, 'Transport:', socket.conn.transport.name)
 
             // Store user ID for cleanup
             socket.userId = socket.user.id
 
             // Handle disconnection
-            socket.on('disconnect', () => {
-                console.log('Client disconnected:', socket.id, 'User:', socket.userId)
+            socket.on('disconnect', (reason) => {
+                console.log('Client disconnected:', socket.id, 'User:', socket.userId, 'Reason:', reason)
                     // Clean up any active generations for this user
                 if (socket.userId) {
                     const userGenerations = Array.from(this.activeGenerations.entries())
@@ -114,7 +121,15 @@ class AISocketService {
             })
 
             socket.on('startGeneration', async({ title, description }) => {
+                console.log('Received startGeneration request:', {
+                    socketId: socket.id,
+                    userId: socket.user.id,
+                    title,
+                    description
+                })
+
                 if (!socket.user || !socket.user.id) {
+                    console.error('Authentication required for socket:', socket.id)
                     socket.emit('generationError', {
                         error: 'Authentication required'
                     })
@@ -123,6 +138,7 @@ class AISocketService {
 
                 // Validate inputs
                 if (!title || !description || !title.trim() || !description.trim()) {
+                    console.error('Invalid inputs for socket:', socket.id)
                     socket.emit('generationError', {
                         error: 'Title and description are required'
                     })
@@ -131,6 +147,7 @@ class AISocketService {
 
                 // Validate input lengths
                 if (title.length > 1000 || description.length > 5000) {
+                    console.error('Input too long for socket:', socket.id)
                     socket.emit('generationError', {
                         error: 'Title or description too long'
                     })
@@ -142,11 +159,14 @@ class AISocketService {
 
                 // Check for existing generations
                 if (this.getActiveGenerations(userId).length > 0) {
+                    console.error('User has active generation:', userId)
                     socket.emit('generationError', {
                         error: 'You already have an active generation'
                     })
                     return
                 }
+
+                console.log('Starting generation:', generationId)
 
                 let timeoutId
                 this.activeGenerations.set(generationId, {
