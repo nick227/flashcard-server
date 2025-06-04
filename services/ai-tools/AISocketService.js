@@ -78,8 +78,10 @@ class AISocketService {
     initialize(server) {
         this.io = new Server(server, {
             cors: {
-                origin: process.env.NODE_ENV === 'production' ? ['https://flashcardacademy.vercel.app'] : ['http://localhost:5173'],
-                credentials: true
+                origin: process.env.NODE_ENV === 'production' ? ['https://flashcardacademy.vercel.app', 'https://www.flashcardacademy.vercel.app'] : ['http://localhost:5173'],
+                credentials: true,
+                methods: ['GET', 'POST'],
+                allowedHeaders: ['Content-Type', 'Authorization']
             }
         })
 
