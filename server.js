@@ -39,7 +39,8 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
-    'https://flashcardacademy.vercel.app' // Add your production domain
+    'https://flashcardacademy.vercel.app',
+    'https://www.flashcardacademy.vercel.app'
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Rate limiting configuration
@@ -137,9 +138,12 @@ app.use(
                 ],
                 connectSrc: [
                     "'self'",
+                    'wss:',
+                    'ws:',
                     'https://api.stripe.com',
                     'https://*.stripe.com',
-                    'https://*.stripe.network'
+                    'https://*.stripe.network',
+                    ...allowedOrigins
                 ],
                 frameSrc: [
                     "'self'",
