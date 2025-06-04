@@ -9,10 +9,12 @@ class AuthService {
             process.exit(1);
         }
         this.SECRET = process.env.JWT_SECRET;
+        console.log('AuthService initialized with JWT_SECRET:', this.SECRET ? 'Present' : 'Missing');
     }
 
     // Generate tokens
     generateTokens(user) {
+        console.log('Generating tokens for user:', { id: user.id, email: user.email });
         const accessToken = jwt.sign({ id: user.id, email: user.email, role_id: user.role_id },
             this.SECRET, { expiresIn: '24h' }
         );
@@ -27,8 +29,16 @@ class AuthService {
     // Verify token
     verifyToken(token) {
         try {
-            return jwt.verify(token, this.SECRET);
+            console.log('Verifying token with SECRET:', this.SECRET ? 'Present' : 'Missing');
+            const decoded = jwt.verify(token, this.SECRET);
+            console.log('Token verified successfully:', { id: decoded.id, email: decoded.email });
+            return decoded;
         } catch (err) {
+            console.error('Token verification failed:', {
+                name: err.name,
+                message: err.message,
+                stack: err.stack
+            });
             throw err;
         }
     }
@@ -130,14 +140,27 @@ class AuthService {
 
     // Get user from token
     async getUserFromToken(token) {
-        const decoded = this.verifyToken(token);
-        const user = await db.User.findByPk(decoded.id);
+        try {
+            console.log('Getting user from token');
+            const decoded = this.verifyToken(token);
+            console.log('Token decoded:', { id: decoded.id, email: decoded.email });
 
-        if (!user) {
-            throw new Error('User not found');
+            const user = await db.User.findByPk(decoded.id);
+            console.log('User found:', user ? { id: user.id, email: user.email } : 'Not found');
+
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            return user;
+        } catch (err) {
+            console.error('Error in getUserFromToken:', {
+                name: err.name,
+                message: err.message,
+                stack: err.stack
+            });
+            throw err;
         }
-
-        return user;
     }
 }
 

@@ -103,6 +103,15 @@ app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, 
 // Ping endpoint
 app.get('/ping', (req, res) => res.json({ ok: true, time: new Date() }));
 
+// Test JWT_SECRET endpoint (remove in production)
+app.get('/test-jwt-secret', (req, res) => {
+    res.json({
+        hasSecret: !!process.env.JWT_SECRET,
+        secretLength: process.env.JWT_SECRET ? process.env.JWT_SECRET.length : 0,
+        environment: process.env.NODE_ENV
+    });
+});
+
 // Helmet configuration
 app.use(
     helmet({

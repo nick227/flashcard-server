@@ -447,6 +447,8 @@ class SetsController extends ApiController {
                 }));
             }
 
+            console.log('Getting set with ID:', setId, 'User:', req.user ? req.user.id : 'No user');
+
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
                 include: [{
@@ -475,10 +477,17 @@ class SetsController extends ApiController {
             });
 
             if (!set) {
+                console.log('Set not found with ID:', setId);
                 return res.status(404).json(responseFormatter.formatError({
                     message: 'Set not found'
                 }));
             }
+
+            console.log('Found set:', {
+                id: set.id,
+                title: set.title,
+                educatorId: set.educator_id
+            });
 
             // Get the set with access check
             const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
@@ -493,6 +502,11 @@ class SetsController extends ApiController {
         } catch (err) {
             console.error('SetsController.get - Error:', err);
             console.error('Error stack:', err.stack);
+            console.error('Request details:', {
+                params: req.params,
+                user: req.user ? { id: req.user.id } : 'No user',
+                headers: req.headers
+            });
             return res.status(500).json(responseFormatter.formatError({
                 message: 'Failed to retrieve set',
                 error: process.env.NODE_ENV === 'development' ? err.message : undefined
