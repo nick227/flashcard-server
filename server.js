@@ -4,6 +4,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const app = express();
+
+// Trust proxy - Add this before any middleware
+app.set('trust proxy', 1);
+
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcrypt');
@@ -51,7 +55,13 @@ const apiLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     // Skip rate limiting for webhook routes
-    skip: (req) => req.path.startsWith('/api/webhook')
+    skip: (req) => req.path.startsWith('/api/webhook'),
+    // Add proxy configuration
+    trustProxy: true,
+    // Use X-Forwarded-For header
+    keyGenerator: (req) => {
+        return req.headers['x-forwarded-for'] || req.ip;
+    }
 });
 
 // Apply rate limiting to all routes
