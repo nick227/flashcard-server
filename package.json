@@ -11,6 +11,9 @@
     "author": "",
     "license": "ISC",
     "type": "commonjs",
+    "engines": {
+        "node": ">=20.0.0"
+    },
     "devDependencies": {
         "dredd": "^14.1.0",
         "json-server": "^1.0.0-beta.3"
@@ -38,6 +41,7 @@
         "sharp": "^0.34.1",
         "socket.io": "^4.8.1",
         "stripe": "^18.1.1",
+        "@apidevtools/json-schema-ref-parser": "^9.0.9",
         "swagger-autogen": "^2.23.7",
         "swagger-jsdoc": "^6.2.8",
         "swagger-ui-express": "^5.0.1",

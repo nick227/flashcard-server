@@ -13,6 +13,12 @@ class AISocketService {
         this.CONCURRENT_LIMIT = 2 // Max concurrent generations
     }
 
+    // Clean URL helper
+    cleanUrl(url) {
+        if (!url) return null;
+        return url.replace(/;/g, '').replace(/\/+$/, '');
+    }
+
     // Custom rate limiter for WebSocket
     checkRateLimit(socket, next) {
         const userId = socket.user && socket.user.id
@@ -79,7 +85,14 @@ class AISocketService {
         console.log('Initializing socket server with environment:', process.env.NODE_ENV)
 
         const isDev = process.env.NODE_ENV !== 'production'
-        const allowedOrigins = isDev ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : ['https://flashcardacademy.vercel.app', 'https://www.flashcardacademy.vercel.app']
+        const allowedOrigins = isDev ? ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'] : [
+            'https://flashcard-client-phi.vercel.app',
+            'https://flashcard-academy.vercel.app',
+            'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+            'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
+            'https://flashcardacademy.vercel.app',
+            'https://www.flashcardacademy.vercel.app'
+        ]
 
         this.io = new Server(server, {
             cors: {
@@ -108,7 +121,7 @@ class AISocketService {
                 userId: socket.user.id,
                 transport: socket.conn.transport.name,
                 environment: process.env.NODE_ENV,
-                origin: socket.handshake.headers.origin
+                origin: this.cleanUrl(socket.handshake.headers.origin)
             })
 
             // Store user ID for cleanup
