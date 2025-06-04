@@ -78,9 +78,12 @@ class AISocketService {
     initialize(server) {
         console.log('Initializing socket server with environment:', process.env.NODE_ENV)
 
+        const isDev = process.env.NODE_ENV !== 'production'
+        const allowedOrigins = isDev ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : ['https://flashcardacademy.vercel.app', 'https://www.flashcardacademy.vercel.app']
+
         this.io = new Server(server, {
             cors: {
-                origin: process.env.NODE_ENV === 'production' ? ['https://flashcardacademy.vercel.app', 'https://www.flashcardacademy.vercel.app'] : ['http://localhost:5173'],
+                origin: allowedOrigins,
                 credentials: true,
                 methods: ['GET', 'POST'],
                 allowedHeaders: ['Content-Type', 'Authorization']
@@ -90,7 +93,7 @@ class AISocketService {
             pingTimeout: 60000,
             pingInterval: 25000,
             connectTimeout: 10000,
-            allowEIO3: true // Allow Engine.IO v3 clients
+            allowEIO3: true
         })
 
         // Add authentication middleware
@@ -104,11 +107,8 @@ class AISocketService {
                 socketId: socket.id,
                 userId: socket.user.id,
                 transport: socket.conn.transport.name,
-                handshake: {
-                    headers: socket.handshake.headers,
-                    query: socket.handshake.query,
-                    auth: socket.handshake.auth
-                }
+                environment: process.env.NODE_ENV,
+                origin: socket.handshake.headers.origin
             })
 
             // Store user ID for cleanup
