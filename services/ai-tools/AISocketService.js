@@ -89,7 +89,8 @@ class AISocketService {
             transports: ['websocket', 'polling'],
             pingTimeout: 60000,
             pingInterval: 25000,
-            connectTimeout: 10000
+            connectTimeout: 10000,
+            allowEIO3: true // Allow Engine.IO v3 clients
         })
 
         // Add authentication middleware
@@ -99,14 +100,28 @@ class AISocketService {
         this.io.use(this.checkRateLimit.bind(this))
 
         this.io.on('connection', (socket) => {
-            console.log('Client connected:', socket.id, 'User:', socket.user.id, 'Transport:', socket.conn.transport.name)
+            console.log('Client connected:', {
+                socketId: socket.id,
+                userId: socket.user.id,
+                transport: socket.conn.transport.name,
+                handshake: {
+                    headers: socket.handshake.headers,
+                    query: socket.handshake.query,
+                    auth: socket.handshake.auth
+                }
+            })
 
             // Store user ID for cleanup
             socket.userId = socket.user.id
 
             // Handle disconnection
             socket.on('disconnect', (reason) => {
-                console.log('Client disconnected:', socket.id, 'User:', socket.userId, 'Reason:', reason)
+                console.log('Client disconnected:', {
+                        socketId: socket.id,
+                        userId: socket.userId,
+                        reason,
+                        transport: socket.conn.transport.name
+                    })
                     // Clean up any active generations for this user
                 if (socket.userId) {
                     const userGenerations = Array.from(this.activeGenerations.entries())
@@ -120,140 +135,145 @@ class AISocketService {
                 }
             })
 
-            socket.on('startGeneration', async({ title, description }) => {
+            socket.on('startGeneration', async({ title, description }, callback) => {
                 console.log('Received startGeneration request:', {
                     socketId: socket.id,
                     userId: socket.user.id,
                     title,
-                    description
-                })
-
-                if (!socket.user || !socket.user.id) {
-                    console.error('Authentication required for socket:', socket.id)
-                    socket.emit('generationError', {
-                        error: 'Authentication required'
-                    })
-                    return
-                }
-
-                // Validate inputs
-                if (!title || !description || !title.trim() || !description.trim()) {
-                    console.error('Invalid inputs for socket:', socket.id)
-                    socket.emit('generationError', {
-                        error: 'Title and description are required'
-                    })
-                    return
-                }
-
-                // Validate input lengths
-                if (title.length > 1000 || description.length > 5000) {
-                    console.error('Input too long for socket:', socket.id)
-                    socket.emit('generationError', {
-                        error: 'Title or description too long'
-                    })
-                    return
-                }
-
-                const userId = socket.user.id
-                const generationId = `${userId}-${Date.now()}`
-
-                // Check for existing generations
-                if (this.getActiveGenerations(userId).length > 0) {
-                    console.error('User has active generation:', userId)
-                    socket.emit('generationError', {
-                        error: 'You already have an active generation'
-                    })
-                    return
-                }
-
-                console.log('Starting generation:', generationId)
-
-                let timeoutId
-                this.activeGenerations.set(generationId, {
-                    socket,
-                    userId,
-                    timeoutId: setTimeout(() => {
-                            if (this.activeGenerations.has(generationId)) {
-                                socket.emit('generationError', {
-                                    generationId,
-                                    error: 'Generation timed out'
-                                })
-                                this.activeGenerations.delete(generationId)
-                            }
-                        }, 300000) // 5 minutes
+                    description,
+                    transport: socket.conn.transport.name
                 })
 
                 try {
-                    // Start generation process
-                    const result = await AIService.generateCards(title, description, userId)
-
-                    if (!result || !Array.isArray(result)) {
-                        throw new Error('Invalid generation result')
+                    if (!socket.user || !socket.user.id) {
+                        console.error('Authentication required for socket:', socket.id)
+                        if (callback) callback(new Error('Authentication required'))
+                        return
                     }
 
-                    console.log('Generated cards:', result)
+                    // Validate inputs
+                    if (!title || !description || !title.trim() || !description.trim()) {
+                        console.error('Invalid inputs for socket:', socket.id)
+                        if (callback) callback(new Error('Title and description are required'))
+                        return
+                    }
 
-                    // Stream cards as they are generated
-                    for (const card of result) {
-                        // Validate card structure
-                        if (!card || typeof card !== 'object') {
-                            console.warn('Invalid card structure:', card)
-                            continue
+                    // Validate input lengths
+                    if (title.length > 1000 || description.length > 5000) {
+                        console.error('Input too long for socket:', socket.id)
+                        if (callback) callback(new Error('Title or description too long'))
+                        return
+                    }
+
+                    const userId = socket.user.id
+                    const generationId = `${userId}-${Date.now()}`
+
+                    // Check for existing generations
+                    if (this.getActiveGenerations(userId).length > 0) {
+                        console.error('User has active generation:', userId)
+                        if (callback) callback(new Error('You already have an active generation'))
+                        return
+                    }
+
+                    console.log('Starting generation:', generationId)
+
+                    // Acknowledge the request
+                    if (callback) callback(null)
+
+                    let timeoutId
+                    this.activeGenerations.set(generationId, {
+                        socket,
+                        userId,
+                        timeoutId: setTimeout(() => {
+                                if (this.activeGenerations.has(generationId)) {
+                                    socket.emit('generationError', {
+                                        generationId,
+                                        error: 'Generation timed out'
+                                    })
+                                    this.activeGenerations.delete(generationId)
+                                }
+                            }, 300000) // 5 minutes
+                    })
+
+                    try {
+                        // Start generation process
+                        const result = await AIService.generateCards(title, description, userId)
+
+                        if (!result || !Array.isArray(result)) {
+                            throw new Error('Invalid generation result')
                         }
 
-                        // Ensure proper card structure
-                        const validatedCard = {
-                            front: {
-                                text: card.front.text || '',
-                                imageUrl: card.front.imageUrl || null
-                            },
-                            back: {
-                                text: card.back.text || '',
-                                imageUrl: card.back.imageUrl || null
-                            },
-                            hint: card.hint || null
+                        console.log('Generated cards:', result)
+
+                        // Stream cards as they are generated
+                        for (const card of result) {
+                            // Validate card structure
+                            if (!card || typeof card !== 'object') {
+                                console.warn('Invalid card structure:', card)
+                                continue
+                            }
+
+                            // Ensure proper card structure
+                            const validatedCard = {
+                                front: {
+                                    text: card.front.text || '',
+                                    imageUrl: card.front.imageUrl || null
+                                },
+                                back: {
+                                    text: card.back.text || '',
+                                    imageUrl: card.back.imageUrl || null
+                                },
+                                hint: card.hint || null
+                            }
+
+                            // Validate content
+                            if (!validatedCard.front.text && !validatedCard.front.imageUrl) {
+                                console.warn('Card front has no content:', card)
+                                continue
+                            }
+                            if (!validatedCard.back.text && !validatedCard.back.imageUrl) {
+                                console.warn('Card back has no content:', card)
+                                continue
+                            }
+
+                            console.log('Emitting card:', validatedCard)
+                            socket.emit('cardGenerated', {
+                                generationId,
+                                card: validatedCard
+                            })
                         }
 
-                        // Validate content
-                        if (!validatedCard.front.text && !validatedCard.front.imageUrl) {
-                            console.warn('Card front has no content:', card)
-                            continue
-                        }
-                        if (!validatedCard.back.text && !validatedCard.back.imageUrl) {
-                            console.warn('Card back has no content:', card)
-                            continue
-                        }
-
-                        console.log('Emitting card:', validatedCard)
-                        socket.emit('cardGenerated', {
+                        // Send completion message
+                        socket.emit('generationComplete', {
                             generationId,
-                            card: validatedCard
+                            success: true
                         })
+                    } catch (error) {
+                        console.error('Generation error:', error)
+                        socket.emit('generationError', {
+                            generationId,
+                            error: error.message || 'Failed to generate cards'
+                        })
+                    } finally {
+                        // Clear timeout and cleanup
+                        const generation = this.activeGenerations.get(generationId)
+                        if (generation && generation.timeoutId) {
+                            clearTimeout(generation.timeoutId)
+                        }
+                        this.activeGenerations.delete(generationId)
                     }
-
-                    // Send completion message
-                    socket.emit('generationComplete', {
-                        generationId,
-                        success: true
-                    })
                 } catch (error) {
-                    console.error('Generation error:', error)
-                    socket.emit('generationError', {
-                        generationId,
-                        error: error.message || 'Failed to generate cards'
-                    })
-                } finally {
-                    // Clear timeout and cleanup
-                    const generation = this.activeGenerations.get(generationId)
-                    if (generation && generation.timeoutId) {
-                        clearTimeout(generation.timeoutId)
-                    }
-                    this.activeGenerations.delete(generationId)
+                    console.error('Error in startGeneration handler:', error)
+                    if (callback) callback(error)
                 }
             })
 
             socket.on('error', (error) => {
-                console.error('Socket error:', error)
+                console.error('Socket error:', {
+                    socketId: socket.id,
+                    userId: socket.userId,
+                    error: error.message || error
+                })
                 socket.emit('generationError', {
                     error: 'Internal server error'
                 })
