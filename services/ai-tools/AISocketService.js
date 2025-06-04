@@ -135,12 +135,13 @@ class AISocketService {
                 }
             })
 
-            socket.on('startGeneration', async({ title, description }, callback) => {
+            socket.on('startGeneration', async({ title, description, generationId }, callback) => {
                 console.log('Received startGeneration request:', {
                     socketId: socket.id,
                     userId: socket.user.id,
                     title,
                     description,
+                    generationId,
                     transport: socket.conn.transport.name
                 })
 
@@ -166,7 +167,6 @@ class AISocketService {
                     }
 
                     const userId = socket.user.id
-                    const generationId = `${userId}-${Date.now()}`
 
                     // Check for existing generations
                     if (this.getActiveGenerations(userId).length > 0) {
@@ -236,17 +236,47 @@ class AISocketService {
                                 continue
                             }
 
-                            console.log('Emitting card:', validatedCard)
+                            console.log('Emitting card:', {
+                                generationId,
+                                card: validatedCard,
+                                socketId: socket.id
+                            })
+
+                            // Emit with acknowledgment
                             socket.emit('cardGenerated', {
                                 generationId,
                                 card: validatedCard
+                            }, (ack) => {
+                                if (ack && ack.error) {
+                                    console.error('Error acknowledging card:', ack.error)
+                                } else {
+                                    console.log('Card acknowledged by client:', {
+                                        generationId,
+                                        socketId: socket.id,
+                                        card: validatedCard
+                                    })
+                                }
                             })
                         }
 
                         // Send completion message
+                        console.log('Emitting generation complete:', {
+                            generationId,
+                            socketId: socket.id
+                        })
+
                         socket.emit('generationComplete', {
                             generationId,
                             success: true
+                        }, (ack) => {
+                            if (ack && ack.error) {
+                                console.error('Error acknowledging completion:', ack.error)
+                            } else {
+                                console.log('Generation completion acknowledged by client:', {
+                                    generationId,
+                                    socketId: socket.id
+                                })
+                            }
                         })
                     } catch (error) {
                         console.error('Generation error:', error)
