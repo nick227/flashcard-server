@@ -218,6 +218,82 @@ class PurchasesController extends ApiController {
             res.status(500).json({ error: 'Checkout failed' });
         }
     }
+
+    async getUserPurchases(req, res) {
+        try {
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 6;
+            const offset = (page - 1) * limit;
+            const userId = req.query.userId || req.user.id;
+
+            const purchases = await this.model.findAndCountAll({
+                where: { user_id: userId },
+                include: [{
+                    model: this.model.sequelize.models.Set,
+                    as: 'set',
+                    required: true,
+                    include: [{
+                        model: this.model.sequelize.models.User,
+                        as: 'educator',
+                        attributes: ['id', 'name', 'email', 'image']
+                    }]
+                }],
+                limit,
+                offset,
+                order: [
+                    ['created_at', 'DESC']
+                ],
+                distinct: true
+            });
+
+            // Transform the results to match frontend type
+            const transformedPurchases = purchases.rows.map(record => {
+                try {
+                    const purchase = record.get({ plain: true });
+
+                    const transformed = {
+                        id: purchase.id,
+                        user_id: purchase.user_id,
+                        set_id: purchase.set_id,
+                        date: purchase.date || purchase.created_at,
+                        set: purchase.set ? {
+                            id: purchase.set.id,
+                            title: purchase.set.title || 'Untitled Set',
+                            description: purchase.set.description || '',
+                            price: parseFloat(purchase.set.price) || 0,
+                            image: purchase.set.thumbnail ?
+                                responseFormatter.convertPathToUrl(purchase.set.thumbnail) : '/images/default-set.png',
+                            educator: purchase.set.educator ? {
+                                id: purchase.set.educator.id,
+                                name: purchase.set.educator.name
+                            } : null
+                        } : null
+                    };
+                    return transformed;
+                } catch (transformError) {
+                    console.error('Error transforming purchase:', transformError);
+                    console.error('Purchase data:', record);
+                    return null;
+                }
+            }).filter(Boolean);
+
+            res.json({
+                items: transformedPurchases,
+                pagination: {
+                    total: purchases.count,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(purchases.count / limit)
+                }
+            });
+        } catch (err) {
+            console.error('Error in getUserPurchases:', err);
+            res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to fetch purchases',
+                error: err.message
+            }));
+        }
+    }
 }
 
 module.exports = PurchasesController

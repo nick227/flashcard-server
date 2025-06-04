@@ -5,6 +5,13 @@ const jwtAuth = require('../middleware/jwtAuth');
 const historyController = new HistoryController();
 const router = express.Router();
 
+// GET /history/user
+// #swagger.tags = ['History']
+// #swagger.description = 'Get view history for the current user'
+// #swagger.responses[200] = { description: 'Array of history records', schema: { type: 'array', items: { $ref: '#/definitions/History' } } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+router.get('/user', jwtAuth, historyController.getUserHistory.bind(historyController));
+
 // GET /history
 // #swagger.tags = ['History']
 // #swagger.description = 'Get view history for a specific user'

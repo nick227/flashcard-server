@@ -19,12 +19,17 @@
 const axios = require('axios')
 const queueService = require('./QueueService')
 const db = require('../db')
+const {
+    DEZGO_API_URL,
+    DEFAULT_GUIDANCE,
+    REQUEST_TIMEOUT,
+    MAX_RETRIES,
+    RETRY_DELAY,
+    MAX_RETRY_DELAY,
+    ERROR_MESSAGES
+} = require('./ai-tools/image-tools/constants')
 
 // Constants for configuration
-const DEZGO_API_URL = 'https://api.dezgo.com/text2image_flux'
-const DEFAULT_GUIDANCE = 7.5
-const REQUEST_TIMEOUT = 180000 // 3 minutes
-const MAX_RETRIES = 2
 const MAX_TITLE_LENGTH = 100
 const MAX_DESCRIPTION_LENGTH = 500
 
@@ -135,27 +140,11 @@ class AiImageFluxService {
         const cleanTitle = title.trim()
         const cleanDescription = description.trim()
 
-        // Extract key concepts from description
-        const keyConcepts = this.extractKeyConcepts(cleanDescription)
-
-        return `Create a professional educational flashcard set thumbnail for: ${cleanTitle}. Key concepts: ${keyConcepts.join(', ')}. Style: clean, modern, educational, professional, minimalist design.`
-    }
-
-    /**
-     * Extracts key concepts from a description
-     * 
-     * @param {string} description - The description to analyze
-     * @returns {string[]} Array of key concepts
-     */
-    static extractKeyConcepts(description) {
-        // Simple concept extraction - split by common separators and take first 3-5 meaningful phrases
-        const concepts = description
-            .split(/[,.;]/)
-            .map(phrase => phrase.trim())
-            .filter(phrase => phrase.length > 0)
-            .slice(0, 5)
-
-        return concepts.length > 0 ? concepts : ['education', 'learning', 'knowledge']
+        return `Create a graphical thumbnail for: "${cleanTitle}". 
+        
+        Description: ${cleanDescription}. 
+        
+        Style: creative, simple, meaningful, stylish, clean crisp lines, hires illustration.`
     }
 
     /**
@@ -188,13 +177,37 @@ class AiImageFluxService {
 
             return Buffer.from(response.data, 'binary')
         } catch (error) {
-            // Retry logic for specific errors
+            // Check if we should retry
             if (retryCount < MAX_RETRIES && this.shouldRetry(error)) {
-                console.log(`Retrying image generation (attempt ${retryCount + 1})`)
+                const delay = this.calculateRetryDelay(retryCount)
+                console.log(`Retrying image generation (attempt ${retryCount + 1}) after ${delay}ms delay`)
+                await new Promise(resolve => setTimeout(resolve, delay))
                 return this.generateDezgoImage(prompt, retryCount + 1)
             }
             throw error
         }
+    }
+
+    static calculateRetryDelay(retryCount) {
+        // Exponential backoff with jitter
+        const exponentialDelay = Math.min(
+                RETRY_DELAY * Math.pow(2, retryCount),
+                MAX_RETRY_DELAY
+            )
+            // Add jitter (±20%)
+        const jitter = exponentialDelay * 0.2
+        return exponentialDelay + (Math.random() * jitter * 2 - jitter)
+    }
+
+    static shouldRetry(error) {
+        // Retry on network errors, 5xx server errors, or 499 client closed errors
+        return error.code === 'ECONNRESET' ||
+            error.code === 'ETIMEDOUT' ||
+            error.code === 'ERR_BAD_REQUEST' ||
+            (error.response && (
+                error.response.status >= 500 ||
+                error.response.status === 499
+            ))
     }
 
     /**
@@ -204,19 +217,6 @@ class AiImageFluxService {
      */
     static generateRandomSeed() {
         return Math.floor(Math.random() * 1000000000).toString()
-    }
-
-    /**
-     * Determines if a request should be retried
-     * 
-     * @param {Error} error - The error to check
-     * @returns {boolean} Whether to retry
-     */
-    static shouldRetry(error) {
-        // Retry on network errors or 5xx server errors
-        return error.code === 'ECONNRESET' ||
-            error.code === 'ETIMEDOUT' ||
-            (error.response && error.response.status >= 500)
     }
 
     /**
@@ -231,24 +231,26 @@ class AiImageFluxService {
         if (error.response) {
             switch (error.response.status) {
                 case 401:
-                    return new Error('Invalid Dezgo API key')
+                    return new Error(ERROR_MESSAGES.INVALID_KEY)
                 case 429:
-                    return new Error('Dezgo API rate limit exceeded')
+                    return new Error(ERROR_MESSAGES.RATE_LIMIT)
                 case 400:
-                    return new Error('Invalid request to Dezgo API')
+                    return new Error(ERROR_MESSAGES.INVALID_REQUEST)
+                case 499:
+                    return new Error(ERROR_MESSAGES.CLIENT_CLOSED)
                 default:
                     return new Error(`Dezgo API error: ${error.response.status}`)
             }
         }
 
         if (error.code === 'ECONNREFUSED') {
-            return new Error('Could not connect to Dezgo service')
+            return new Error(ERROR_MESSAGES.CONNECTION_ERROR)
         }
         if (error.code === 'ETIMEDOUT') {
-            return new Error('Dezgo service request timed out')
+            return new Error(ERROR_MESSAGES.TIMEOUT)
         }
 
-        return new Error('Failed to generate thumbnail')
+        return new Error(ERROR_MESSAGES.GENERATION_ERROR)
     }
 }
 

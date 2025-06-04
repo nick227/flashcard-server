@@ -6,6 +6,7 @@ const responseFormatter = require('../services/ResponseFormatter');
 const PaginationService = require('../services/PaginationService');
 const SearchService = require('../services/SearchService');
 const { Op } = require('sequelize');
+const toCamel = require('../utils/toCamel');
 
 class SetsController extends ApiController {
     constructor() {
@@ -43,11 +44,34 @@ class SetsController extends ApiController {
 
         const errors = [];
         cards.forEach((card, index) => {
-            if (!card.front || !card.front.trim()) {
-                errors.push(`Card ${index + 1}: Front content is required`);
+            // Validate front
+            if (!card.front || typeof card.front !== 'object') {
+                errors.push(`Card ${index + 1}: Front must be an object with text and imageUrl properties`);
+            } else {
+                if (!card.front.text && !card.front.imageUrl) {
+                    errors.push(`Card ${index + 1}: Front must have either text or imageUrl`);
+                }
+                if (card.front.text && typeof card.front.text !== 'string') {
+                    errors.push(`Card ${index + 1}: Front text must be a string`);
+                }
+                if (card.front.imageUrl && typeof card.front.imageUrl !== 'string') {
+                    errors.push(`Card ${index + 1}: Front imageUrl must be a string`);
+                }
             }
-            if (!card.back || !card.back.trim()) {
-                errors.push(`Card ${index + 1}: Back content is required`);
+
+            // Validate back
+            if (!card.back || typeof card.back !== 'object') {
+                errors.push(`Card ${index + 1}: Back must be an object with text and imageUrl properties`);
+            } else {
+                if (!card.back.text && !card.back.imageUrl) {
+                    errors.push(`Card ${index + 1}: Back must have either text or imageUrl`);
+                }
+                if (card.back.text && typeof card.back.text !== 'string') {
+                    errors.push(`Card ${index + 1}: Back text must be a string`);
+                }
+                if (card.back.imageUrl && typeof card.back.imageUrl !== 'string') {
+                    errors.push(`Card ${index + 1}: Back imageUrl must be a string`);
+                }
             }
         });
 
@@ -156,56 +180,27 @@ class SetsController extends ApiController {
 
     async create(req, res) {
         try {
-            // Ensure we have the required fields
+            // Validate required fields
             if (!req.body.title || !req.body.description || !req.body.categoryId) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: 'Missing required fields: title, description, and categoryId are required'
-                }));
+                return res.status(400).json({ message: 'Missing required fields' });
             }
 
-            console.log('SetsController.create - Request body:', {
-                title: req.body.title,
-                description: req.body.description,
-                categoryId: req.body.categoryId,
-                thumbnailUrl: req.body.thumbnailUrl,
-                file: req.file ? 'File present' : 'No file'
-            });
-
+            // Parse request data
             const setData = {
                 title: req.body.title,
                 description: req.body.description,
                 category_id: req.body.categoryId,
                 price: req.body.price || '0',
                 is_subscriber_only: req.body.isSubscriberOnly === 'true',
-                educator_id: req.user.id,
-                featured: req.body.featured === 'true',
-                hidden: req.body.hidden === 'true'
+                educator_id: req.user.id
             };
 
-            let cards = [];
-            try {
-                cards = JSON.parse(req.body.cards || '[]');
-            } catch (err) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: `Invalid cards data: ${err.message}`
-                }));
-            }
-
-            let tags = [];
-            if (req.body.tags) {
-                try {
-                    tags = JSON.parse(req.body.tags);
-                } catch (err) {
-                    console.error('Error parsing tags:', err);
-                }
-            }
+            // Parse cards and tags
+            let cards = JSON.parse(req.body.cards || '[]');
+            let tags = req.body.tags ? JSON.parse(req.body.tags) : [];
 
             // Handle thumbnail (either file or URL)
             const thumbnail = req.file || req.body.thumbnailUrl;
-            console.log('SetsController.create - Thumbnail data:', {
-                type: thumbnail ? (typeof thumbnail) : 'null',
-                value: thumbnail ? (typeof thumbnail === 'string' ? thumbnail : 'File object') : 'null'
-            });
 
             if (!thumbnail) {
                 return res.status(400).json(responseFormatter.formatError({
@@ -213,6 +208,7 @@ class SetsController extends ApiController {
                 }));
             }
 
+            // Create set
             const set = await this.setService.createSet(setData, cards, tags, thumbnail);
             return res.json(set);
         } catch (err) {
@@ -451,8 +447,6 @@ class SetsController extends ApiController {
                 }));
             }
 
-
-
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
                 include: [{
@@ -468,7 +462,7 @@ class SetsController extends ApiController {
                     {
                         model: this.model.sequelize.models.Card,
                         as: 'cards',
-                        attributes: ['id', 'set_id', 'front', 'back', 'hint'],
+                        attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
                         required: false // Make it a LEFT JOIN to get sets even without cards
                     },
                     {
@@ -669,6 +663,90 @@ class SetsController extends ApiController {
         } catch (err) {
             console.error('SetsController.removeTag - Error:', err);
             return this.handleError(err, res);
+        }
+    }
+
+    async getLikedSets(req, res) {
+        try {
+
+            const userId = req.query.userId || req.query.user_id;
+            if (!userId) {
+                return res.status(401).json(responseFormatter.formatError({
+                    message: 'User ID is required for liked sets'
+                }));
+            }
+
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 6;
+            const offset = (page - 1) * limit;
+
+            const likedSets = await this.model.findAndCountAll({
+                include: [{
+                    model: this.model.sequelize.models.UserLike,
+                    as: 'likes',
+                    where: { user_id: userId },
+                    required: true
+                }, {
+                    model: this.model.sequelize.models.User,
+                    as: 'educator',
+                    attributes: ['id', 'name', 'email', 'image']
+                }, {
+                    model: this.model.sequelize.models.Category,
+                    as: 'category',
+                    attributes: ['id', 'name']
+                }],
+                limit,
+                offset,
+                order: [
+                    ['created_at', 'DESC']
+                ],
+                distinct: true,
+                raw: false,
+                nest: true
+            });
+
+            // Transform the results to match frontend type
+            const transformedSets = likedSets.rows.map(record => {
+                try {
+                    const set = record.get({ plain: true });
+
+                    const transformed = {
+                        id: set.id,
+                        title: set.title || 'Untitled Set',
+                        description: set.description || '',
+                        category: (set.category && set.category.name) || 'Uncategorized',
+                        image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
+                        educatorName: (set.educator && set.educator.name) || 'Unknown',
+                        price: parseFloat(set.price) || 0,
+                        educator: set.educator ? {
+                            id: set.educator.id,
+                            name: set.educator.name
+                        } : null
+                    };
+
+                    return transformed;
+                } catch (transformError) {
+                    console.error('Error transforming liked set:', transformError);
+                    console.error('Set data:', record);
+                    return null;
+                }
+            }).filter(Boolean);
+
+            res.json({
+                items: transformedSets,
+                pagination: {
+                    total: likedSets.count,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(likedSets.count / limit)
+                }
+            });
+        } catch (err) {
+            console.error('Error in getLikedSets:', err);
+            res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to fetch liked sets',
+                error: err.message
+            }));
         }
     }
 }

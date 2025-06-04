@@ -15,46 +15,31 @@ class UsersController extends ApiController {
     async nameExists(req, res) {
         try {
             const { name } = req.query;
-            console.log('Backend - Received name check request:', { name });
 
             // Input validation
             if (!name) {
-                console.log('Backend - No name provided');
                 return res.status(400).json({ error: 'Name parameter is required' });
             }
 
             const trimmedName = name.trim();
-            console.log('Backend - Trimmed name:', { trimmedName });
 
             if (trimmedName.length < 2 || trimmedName.length > 50) {
-                console.log('Backend - Invalid name length:', { length: trimmedName.length });
                 return res.status(400).json({ error: 'Name must be between 2 and 50 characters' });
             }
 
             // URL safety check
             const urlSafePattern = /^[a-zA-Z0-9\s\-_]+$/;
             if (!urlSafePattern.test(trimmedName)) {
-                console.log('Backend - Invalid characters in name');
                 return res.status(400).json({ error: 'Name contains invalid characters' });
             }
 
             // Case-insensitive check using MySQL's LOWER()
-            console.log('Backend - Checking database for name:', { trimmedName });
             const exists = await db.User.findOne({
                 where: db.sequelize.where(
                     db.sequelize.fn('LOWER', db.sequelize.col('name')),
                     db.sequelize.fn('LOWER', trimmedName)
                 ),
                 attributes: ['id', 'name'] // Include name for debugging
-            });
-
-            console.log('Backend - Database query result:', {
-                searchedName: trimmedName,
-                found: exists ? {
-                    id: exists.id,
-                    name: exists.name
-                } : null,
-                exists: Boolean(exists)
             });
 
             res.json({

@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db');
 const fileService = require('./services/FileService');
+const aiSocketService = require('./services/ai-tools/AISocketService');
 const usersRouter = require('./routes/users');
 const setsRouter = require('./routes/sets');
 const cardsRouter = require('./routes/cards');
@@ -309,8 +310,14 @@ app.use((err, req, res, next) => {
     });
 });
 
+// Create HTTP server
+const server = require('http').createServer(app);
+
+// Initialize socket service
+aiSocketService.initialize(server);
+
 // Start server
-app.listen(port, '0.0.0.0', () => {
+server.listen(port, '0.0.0.0', () => {
     console.log('NEW Server startup details:', {
         port,
         host: '0.0.0.0',

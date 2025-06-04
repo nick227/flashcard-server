@@ -4,38 +4,28 @@ class SetTransformer {
     static transformSet(set) {
         if (!set) return null;
 
-        try {
-            const transformed = {
-                id: set.id,
-                title: set.title,
-                description: set.description,
-                category: set.category ? set.category.name : 'Uncategorized',
-                categoryId: set.category ? set.category.id : null,
-                educatorId: set.educator_id,
-                educatorName: set.educator ? set.educator.name : 'Unknown',
-                educatorImage: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
-                price: parseFloat(set.price) || 0,
-                isSubscriberOnly: Boolean(set.is_subscriber_only),
-                featured: Boolean(set.featured),
-                hidden: Boolean(set.hidden),
-                thumbnail: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
-                createdAt: set.created_at,
-                updatedAt: set.updated_at,
-                tags: set.tags ? set.tags.map(tag => tag.name) : [],
-                cards: set.cards ? set.cards.map(card => ({
-                    id: card.id,
-                    setId: card.set_id,
-                    front: card.front,
-                    back: card.back,
-                    hint: card.hint || undefined
-                })) : []
-            };
+        const transformedSet = {
+            id: set.id,
+            title: set.title,
+            description: set.description,
+            categoryId: set.category_id,
+            category: set.category ? set.category.name : null,
+            educatorId: set.educator_id,
+            educator: set.educator ? {
+                id: set.educator.id,
+                name: set.educator.name,
+                email: set.educator.email
+            } : null,
+            thumbnail: set.thumbnail,
+            price: set.price,
+            is_subscriber_only: set.is_subscriber_only,
+            tags: set.tags ? set.tags.map(tag => tag.name) : [],
+            cards: set.cards || [],
+            createdAt: set.created_at,
+            updatedAt: set.updated_at
+        };
 
-            return transformed;
-        } catch (err) {
-            console.error('Error transforming set:', err);
-            throw new Error('Failed to transform set data');
-        }
+        return transformedSet;
     }
 
     static transformSetData(data) {

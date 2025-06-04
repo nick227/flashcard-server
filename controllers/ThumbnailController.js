@@ -6,12 +6,6 @@ class ThumbnailController {
             const { title, description } = req.body
             const userId = req.user.id
 
-            console.log('ThumbnailController.generateThumbnail - Request:', {
-                title,
-                description,
-                userId
-            })
-
             if (!title || !description) {
                 return res.status(400).json({
                     message: 'Title and description are required'
@@ -19,7 +13,6 @@ class ThumbnailController {
             }
 
             const result = await ThumbnailService.generateThumbnail(title, description, userId)
-            console.log('ThumbnailController.generateThumbnail - Result:', result)
             res.json(result)
         } catch (error) {
             console.error('Thumbnail Generation Error:', error)

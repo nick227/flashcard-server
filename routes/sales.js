@@ -65,34 +65,4 @@ router.patch('/:id', jwtAuth, salesController.update.bind(salesController));
 // #swagger.responses[404] = { description: 'Sale not found' }
 router.delete('/:id', jwtAuth, salesController.delete.bind(salesController));
 
-// Get all sales for an educator
-router.get('/', jwtAuth, async(req, res) => {
-    try {
-        const result = await PurchasesController.model.findAll({
-            include: [{
-                model: PurchasesController.model.sequelize.models.Set,
-                as: 'set',
-                where: { educator_id: req.user.id },
-                attributes: ['id', 'title', 'description', 'price', 'thumbnail', 'educator_id'],
-                include: [{
-                    model: PurchasesController.model.sequelize.models.User,
-                    as: 'educator',
-                    attributes: ['id', 'name']
-                }]
-            }, {
-                model: PurchasesController.model.sequelize.models.User,
-                as: 'user',
-                attributes: ['id', 'name', 'email']
-            }],
-            order: [
-                ['date', 'DESC']
-            ]
-        });
-        res.json(result);
-    } catch (err) {
-        console.error('Error in sales route:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
 module.exports = router;

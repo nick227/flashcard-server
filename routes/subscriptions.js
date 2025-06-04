@@ -3,46 +3,25 @@ const router = express.Router();
 const SubscriptionsController = require('../controllers/SubscriptionsController');
 const jwtAuth = require('../middleware/jwtAuth');
 
+const controller = new SubscriptionsController();
+
 // Get user's subscriptions
-router.get('/', jwtAuth, async(req, res) => {
-    try {
-        const subscriptions = await SubscriptionsController.model.findAll({
-            where: { user_id: req.user.id },
-            include: [{
-                model: SubscriptionsController.model.sequelize.models.User,
-                as: 'educator',
-                attributes: ['id', 'name', 'email']
-            }]
-        });
-        res.json(subscriptions);
-    } catch (err) {
-        console.error('Error fetching subscriptions:', err);
-        res.status(500).json({ error: 'Failed to fetch subscriptions' });
-    }
-});
+router.get('/', jwtAuth, controller.list.bind(controller));
 
 // Get educator's subscribers
-router.get('/subscribers', jwtAuth, async(req, res) => {
-    try {
-        const subscribers = await SubscriptionsController.model.findAll({
-            where: { educator_id: req.user.id },
-            include: [{
-                model: SubscriptionsController.model.sequelize.models.User,
-                as: 'user',
-                attributes: ['id', 'name', 'email']
-            }]
-        });
-        res.json(subscribers);
-    } catch (err) {
-        console.error('Error fetching subscribers:', err);
-        res.status(500).json({ error: 'Failed to fetch subscribers' });
-    }
-});
+router.get('/subscribers', jwtAuth, controller.getSubscribers.bind(controller));
 
 // Cancel subscription
-router.delete('/:educatorId', jwtAuth, SubscriptionsController.cancelSubscription.bind(SubscriptionsController));
+router.delete('/:educatorId', jwtAuth, controller.cancelSubscription.bind(controller));
 
 // Create subscription
-router.post('/:educatorId', jwtAuth, SubscriptionsController.createSubscription.bind(SubscriptionsController));
+router.post('/:educatorId', jwtAuth, controller.createSubscription.bind(controller));
+
+// GET /subscriptions/user
+// #swagger.tags = ['Subscriptions']
+// #swagger.description = 'Get subscriptions for the current user'
+// #swagger.responses[200] = { description: 'Array of subscriptions', schema: { type: 'array', items: { $ref: '#/definitions/Subscription' } } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+router.get('/user', jwtAuth, controller.getUserSubscriptions.bind(controller));
 
 module.exports = router;

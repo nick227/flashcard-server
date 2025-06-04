@@ -79,6 +79,8 @@ CREATE TABLE cards (
     hint TEXT,
     has_audio TINYINT(1) DEFAULT 0,
     audio_url VARCHAR(255),
+    front_image VARCHAR(255),
+    back_image VARCHAR(255),
     FOREIGN KEY (set_id) REFERENCES sets(id) ON DELETE CASCADE
 );
 

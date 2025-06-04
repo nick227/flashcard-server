@@ -34,11 +34,28 @@ class ValidationService {
 
         const errors = [];
         cards.forEach((card, index) => {
-            if (!card.front || !card.front.trim()) {
-                errors.push(`Card ${index + 1}: Front content is required`);
+            // Validate front
+            if (!card.front || typeof card.front !== 'object') {
+                errors.push(`Card ${index + 1}: Front must be an object with text and imageUrl properties`);
+            } else {
+                if (!card.front.text && !card.front.imageUrl) {
+                    errors.push(`Card ${index + 1}: Front must have either text or imageUrl`);
+                }
+                if (card.front.text && !card.front.text.trim()) {
+                    errors.push(`Card ${index + 1}: Front text cannot be empty`);
+                }
             }
-            if (!card.back || !card.back.trim()) {
-                errors.push(`Card ${index + 1}: Back content is required`);
+
+            // Validate back
+            if (!card.back || typeof card.back !== 'object') {
+                errors.push(`Card ${index + 1}: Back must be an object with text and imageUrl properties`);
+            } else {
+                if (!card.back.text && !card.back.imageUrl) {
+                    errors.push(`Card ${index + 1}: Back must have either text or imageUrl`);
+                }
+                if (card.back.text && !card.back.text.trim()) {
+                    errors.push(`Card ${index + 1}: Back text cannot be empty`);
+                }
             }
         });
 

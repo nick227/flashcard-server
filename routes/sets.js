@@ -14,6 +14,13 @@ router.use((req, res, next) => {
 });
 
 // Public routes
+// GET /sets/liked
+// #swagger.tags = ['Sets']
+// #swagger.description = 'Get sets liked by the current user'
+// #swagger.responses[200] = { description: 'Array of liked sets', schema: { type: 'array', items: { $ref: '#/definitions/Set' } } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+router.get('/liked', jwtAuth, setsController.getLikedSets.bind(setsController));
+
 // GET /sets
 // #swagger.tags = ['Sets']
 // #swagger.description = 'Get all flashcard sets'

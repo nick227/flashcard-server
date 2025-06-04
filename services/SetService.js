@@ -41,14 +41,6 @@ class SetService {
     }
 
     async createSet(setData, cards, tags, file) {
-        console.log('SetService.createSet - Input data:', {
-            setData,
-            cardsCount: cards.length,
-            tagsCount: tags ? tags.length : 0,
-            fileType: file ? (typeof file) : 'null',
-            fileValue: file ? (typeof file === 'string' ? file : 'File object') : 'null'
-        });
-
         // Validate data
         const errors = SetValidationService.validateSetData(setData);
         if (errors.length > 0) {
@@ -71,10 +63,6 @@ class SetService {
         try {
             // Create the set
             const set = await this.Set.create(setData, { transaction });
-            console.log('SetService.createSet - Set created:', {
-                id: set.id,
-                title: set.title
-            });
 
             // Handle tags
             if (tags) {
@@ -83,11 +71,6 @@ class SetService {
 
             // Handle file upload
             if (file) {
-                console.log('SetService.createSet - Handling file upload:', {
-                    fileType: typeof file,
-                    isObject: typeof file === 'object',
-                    hasPath: file && typeof file === 'object' && 'path' in file
-                });
                 await this.handleFileUpload(set, file);
             }
 
@@ -195,8 +178,6 @@ class SetService {
     }
 
     async getSet(setId, userId = null, preRetrievedSet = null) {
-
-
         // Use pre-retrieved set if provided, otherwise fetch it
         const set = preRetrievedSet || await this.Set.findByPk(setId, {
             include: [{
@@ -212,35 +193,84 @@ class SetService {
                 {
                     model: this.Card,
                     as: 'cards',
-                    attributes: ['id', 'set_id', 'front', 'back', 'hint'],
-                    required: false
+                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
+                    required: false,
+                    raw: false // Ensure we get model instances
                 },
                 {
                     model: this.Tag,
                     as: 'tags',
-                    through: { attributes: [] }, // Don't include the join table attributes
+                    through: { attributes: [] },
                     attributes: ['id', 'name']
                 }
             ]
         });
 
         if (!set) {
-
             throw new SetNotFoundError();
         }
 
         // Check access before returning the set
         const accessResult = await this.accessService.checkAccess(setId, userId);
 
-
         if (!accessResult.hasAccess) {
-
             return {
                 ...SetTransformer.transformSet(set),
                 access: accessResult
             };
         }
 
+        // Transform the cards to include image URLs
+        if (set.cards) {
+            // Debug: Log the raw card data
+            console.log('Raw card data:', JSON.stringify(set.cards[0], null, 2));
+
+            // Debug: Log the card model attributes
+            console.log('Card model attributes:', set.cards[0] ? set.cards[0].dataValues : null);
+
+            // Debug: Log the card model instance
+            console.log('Card model instance:', set.cards[0] ? set.cards[0].constructor.name : null);
+
+            // Debug: Log the raw SQL query
+            const card = set.cards[0];
+            if (card) {
+                console.log('Card raw attributes:', card.get({ plain: true }));
+                console.log('Card toJSON:', card.toJSON());
+                console.log('Card front_image:', card.front_image);
+                console.log('Card back_image:', card.back_image);
+            }
+
+            console.log('Raw database values:', set.cards.map(card => {
+                const cardData = {
+                    id: card.id,
+                    front: card.front,
+                    front_image: card.front_image,
+                    back: card.back,
+                    back_image: card.back_image,
+                    allProps: Object.keys(card),
+                    rawData: card.get({ plain: true })
+                };
+                return cardData;
+            }));
+
+            set.cards = set.cards.map(card => {
+                const transformedCard = {
+                    id: card.id,
+                    setId: card.set_id,
+                    front: {
+                        text: card.front || '',
+                        imageUrl: card.front_image || null
+                    },
+                    back: {
+                        text: card.back || '',
+                        imageUrl: card.back_image || null
+                    },
+                    hint: card.hint
+                };
+                console.log('Transformed card:', transformedCard);
+                return transformedCard;
+            });
+        }
 
         return SetTransformer.transformSet(set);
     }
@@ -301,44 +331,30 @@ class SetService {
     }
 
     async handleFileUpload(set, file) {
-        console.log('SetService.handleFileUpload - Input:', {
-            setId: set.id,
-            fileType: typeof file,
-            isObject: typeof file === 'object',
-            hasPath: file && typeof file === 'object' && 'path' in file,
-            isString: typeof file === 'string',
-            stringValue: typeof file === 'string' ? file : 'N/A'
-        });
 
         if (file && typeof file === 'object' && file.path) {
             // This is a file upload
-            console.log('SetService.handleFileUpload - Processing file upload');
             const fileInfo = await fileService.moveUploadedFile(file, set.id);
-            console.log('SetService.handleFileUpload - File info:', fileInfo);
             await set.update({ thumbnail: fileInfo.relativePath });
         } else if (typeof file === 'string' && file.trim()) {
             // This is a URL (from AI generation)
-            console.log('SetService.handleFileUpload - Processing URL:', file);
             await set.update({ thumbnail: file });
         } else {
-            console.error('SetService.handleFileUpload - Invalid file data:', file);
             throw new SetValidationError('Invalid thumbnail data');
         }
 
         // Verify the update
         const updatedSet = await this.Set.findByPk(set.id);
-        console.log('SetService.handleFileUpload - Updated set:', {
-            id: updatedSet.id,
-            thumbnail: updatedSet.thumbnail
-        });
     }
 
     async createCards(set, cards, transaction) {
         await Promise.all(
             cards.map(card =>
                 this.Card.create({
-                    front: card.front,
-                    back: card.back,
+                    front: card.front.text || '',
+                    back: card.back.text || '',
+                    front_image: card.front.imageUrl || null,
+                    back_image: card.back.imageUrl || null,
                     hint: card.hint || null,
                     set_id: set.id
                 }, { transaction })
@@ -347,17 +363,76 @@ class SetService {
     }
 
     async updateCards(set, cards, transaction) {
+        // Delete existing cards
         await this.Card.destroy({
             where: { set_id: set.id },
             transaction
         });
+
+        // Create new cards
         await this.createCards(set, cards, transaction);
     }
 
     async getCompleteSet(setId) {
-        return this.Set.findByPk(setId, {
-            include: this.queryBuilder.getIncludeOptions()
+        const set = await this.Set.findByPk(setId, {
+            include: [{
+                    model: this.Category,
+                    as: 'category',
+                    attributes: ['id', 'name']
+                },
+                {
+                    model: this.User,
+                    as: 'educator',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: this.Card,
+                    as: 'cards',
+                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
+                    required: false
+                },
+                {
+                    model: this.Tag,
+                    as: 'tags',
+                    through: { attributes: [] },
+                    attributes: ['id', 'name']
+                }
+            ]
         });
+
+        if (!set) {
+            throw new SetNotFoundError();
+        }
+
+        // Transform cards to include image URLs in the front/back objects
+        if (set.cards) {
+            console.log('Raw cards from database:', set.cards.map(card => ({
+                front: card.front,
+                front_image: card.front_image,
+                back: card.back,
+                back_image: card.back_image
+            })));
+
+            set.cards = set.cards.map(card => {
+                const transformedCard = {
+                    id: card.id,
+                    setId: card.set_id,
+                    front: {
+                        text: card.front || '',
+                        imageUrl: card.front_image
+                    },
+                    back: {
+                        text: card.back || '',
+                        imageUrl: card.back_image
+                    },
+                    hint: card.hint
+                };
+                console.log('Transformed card:', transformedCard);
+                return transformedCard;
+            });
+        }
+
+        return set;
     }
 }
 

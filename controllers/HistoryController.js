@@ -3,6 +3,7 @@ const toCamel = require('../utils/toCamel');
 const camelToSnakeKeys = require('../utils/camelToSnakeKeys');
 const db = require('../db');
 const responseFormatter = require('../services/ResponseFormatter');
+const { Op } = require('sequelize');
 
 class HistoryController extends ApiController {
     constructor() {
@@ -213,6 +214,99 @@ class HistoryController extends ApiController {
         } catch (err) {
             console.error('Error listing history:', err);
             res.status(500).json({ error: err.message });
+        }
+    }
+
+    async getUserHistory(req, res) {
+        try {
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 6;
+            const offset = (page - 1) * limit;
+            const userId = req.query.userId || req.user.id;
+
+            const history = await this.model.findAndCountAll({
+                where: { user_id: userId },
+                include: [{
+                    model: this.model.sequelize.models.Set,
+                    as: 'Set',
+                    required: true,
+                    include: [{
+                        model: this.model.sequelize.models.User,
+                        as: 'educator',
+                        attributes: ['id', 'name', 'email', 'image']
+                    }, {
+                        model: this.model.sequelize.models.Category,
+                        as: 'category',
+                        attributes: ['id', 'name']
+                    }]
+                }],
+                limit,
+                offset,
+                order: [
+                    ['started_at', 'DESC']
+                ],
+                distinct: true,
+                raw: true,
+                nest: true
+            });
+
+            // Transform the results to match frontend type
+            const transformedHistory = history.rows.map(record => {
+                try {
+                    const set = record.Set || {};
+                    const educator = set.educator || {};
+                    const category = set.category || {};
+
+                    const transformed = {
+                        id: record.id,
+                        userId: record.user_id,
+                        setId: record.set_id,
+                        numCardsViewed: record.num_cards_viewed,
+                        completed: record.completed,
+                        completedAt: record.completed_at,
+                        startedAt: record.started_at,
+                        setTitle: set.title || 'Untitled Set',
+                        setThumbnail: set.thumbnail ?
+                            responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
+                        category: category.name || 'Uncategorized',
+                        educator: educator.id ? {
+                            id: educator.id,
+                            name: educator.name,
+                            image: educator.image ?
+                                responseFormatter.convertPathToUrl(educator.image) : null
+                        } : null,
+                        Set: {
+                            id: set.id,
+                            title: set.title || 'Untitled Set',
+                            thumbnail: set.thumbnail ?
+                                responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png'
+                        }
+                    };
+
+                    return transformed;
+
+                } catch (transformError) {
+                    console.error('Error transforming history record:', transformError);
+                    console.error('History data:', record);
+                    return null;
+                }
+            }).filter(Boolean);
+
+            res.json({
+                items: transformedHistory,
+                pagination: {
+                    total: history.count,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(history.count / limit)
+                }
+            });
+        } catch (err) {
+            console.error('Error in getUserHistory:', err);
+            res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to fetch user history',
+                error: err.message
+            }));
         }
     }
 }
