@@ -227,10 +227,11 @@ class SetAccessService {
 
             return SetAccessService.createAccessDeniedResponse(set);
         } catch (error) {
-            console.error('SetAccessService.checkAccess - Error:', error);
             if (error instanceof SetAccessError) {
+                // Don't log known access errors (like hidden sets)
                 throw error;
             }
+            console.error('SetAccessService.checkAccess - Unexpected Error:', error);
             logger.error(`Unexpected error in access check: ${error.message}`, error);
             throw new SetAccessError('An unexpected error occurred during access check');
         }

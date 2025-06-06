@@ -16,7 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db');
 const fileService = require('./services/FileService');
-const aiSocketService = require('./services/ai-tools/AISocketService');
+const AISocketService = require('./services/ai-tools/AISocketService');
 const usersRouter = require('./routes/users');
 const setsRouter = require('./routes/sets');
 const cardsRouter = require('./routes/cards');
@@ -337,6 +337,7 @@ app.use((err, req, res, next) => {
 const server = require('http').createServer(app);
 
 // Initialize socket service
+const aiSocketService = new AISocketService();
 aiSocketService.initialize(server);
 
 // Start server

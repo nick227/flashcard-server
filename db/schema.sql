@@ -163,5 +163,21 @@ CREATE INDEX idx_cards_set_id ON cards(set_id);
 CREATE INDEX idx_likes_user_id ON user_likes(user_id);
 CREATE INDEX idx_likes_set_id ON user_likes(set_id);
 
+-- Generation Sessions
+CREATE TABLE IF NOT EXISTS generation_sessions (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id INT NOT NULL,
+    openai_request_id VARCHAR(191) NOT NULL DEFAULT 'pending',
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status ENUM('preparing', 'generating', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'preparing',
+    cards_generated INT NOT NULL DEFAULT 0,
+    total_cards INT NOT NULL DEFAULT 10,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    error_message TEXT,
+    current_operation TEXT
+);
+
 
 

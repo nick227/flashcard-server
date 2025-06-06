@@ -95,16 +95,17 @@ class AiSetSequence {
      * Generates card content using AI with function calling
      * @param {string} title - Set title
      * @param {string} description - Set description
+     * @param {string} category - Set category
      * @returns {Promise<Object>} Raw card content with prompts and completion
      */
-    async generateCardContent(title, description) {
-        console.log('AiSetSequence.generateCardContent - Starting with:', { title, description })
+    async generateCardContent(title, description, category) {
+        console.log('AiSetSequence.generateCardContent - Starting with:', { title, description, category })
 
         const functions = FlashcardPrompts.getFunctionCallFormat()
 
         console.log('AiSetSequence.generateCardContent - Calling OpenAI')
         const completion = await this.client.callOpenAI(
-            FlashcardPrompts.getUserPrompt(title, description), {
+            FlashcardPrompts.getUserPrompt(title, description, category), {
                 functions,
                 function_call: { name: "generateCards" },
                 systemPrompt: FlashcardPrompts.getSystemPrompt()
@@ -287,21 +288,53 @@ class AiSetSequence {
      * Processes all cards with rate limiting
      * @param {Array} cards - Raw card content
      * @param {number} userId - User ID
+     * @param {Socket} socket - Socket instance for progress updates
+     * @param {string} generationId - Generation ID for tracking
      * @returns {Promise<Array>} Processed cards with image URLs
      */
-    async processAllCards(cards, userId) {
+    async processAllCards(cards, userId, socket, generationId) {
         console.log('AiSetSequence.processAllCards - Starting with:', { cardCount: cards.length, userId })
         const processedCards = []
 
         // Process one card at a time to avoid rate limits
         for (let i = 0; i < cards.length; i++) {
             console.log(`AiSetSequence.processAllCards - Processing card ${i + 1}/${cards.length}`)
+
+            // Emit progress update before processing card
+            if (socket && generationId) {
+                const progress = Math.round((i / cards.length) * 100)
+                socket.emit('generationProgress', {
+                    generationId,
+                    message: `Processing card ${i + 1} of ${cards.length}...`,
+                    progress,
+                    totalCards: cards.length,
+                    currentCard: i + 1,
+                    stage: 'processing'
+                })
+            }
+
             const processedCard = await this.processCardImages(cards[i], userId)
             processedCards.push(processedCard)
 
-            // Add a small delay between cards
+            // Emit card immediately after processing
+            if (socket && generationId) {
+                const progress = Math.round(((i + 1) / cards.length) * 100)
+                socket.emit('cardGenerated', {
+                    generationId,
+                    card: processedCard,
+                    progress,
+                    totalCards: cards.length,
+                    currentCard: i + 1,
+                    stage: 'completed'
+                })
+
+                // Small delay to ensure client processes the card
+                await new Promise(resolve => setTimeout(resolve, 50))
+            }
+
+            // Add a small delay between cards to prevent overwhelming the client
             if (i < cards.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000))
+                await new Promise(resolve => setTimeout(resolve, 500))
             }
         }
 
@@ -313,16 +346,31 @@ class AiSetSequence {
      * Main sequence for generating a complete set
      * @param {string} title - Set title
      * @param {string} description - Set description
+     * @param {string} category - Set category
      * @param {number} userId - User ID
+     * @param {Socket} socket - Socket instance for progress updates
+     * @param {string} generationId - Generation ID for tracking
      * @returns {Promise<Object>} Generation results
      */
-    async generateSet(title, description, userId) {
-        console.log('AiSetSequence.generateSet - Starting with:', { title, description, userId })
+    async generateSet(title, description, category, userId, socket = null, generationId = null) {
+        console.log('AiSetSequence.generateSet - Starting with:', { title, description, category, userId })
         try {
             // 1. Generate card content
             console.log('AiSetSequence.generateSet - Generating card content')
             const startTime = Date.now()
-            const { cards, completion } = await this.generateCardContent(title, description)
+
+            // Emit initial progress
+            if (socket && generationId) {
+                socket.emit('generationProgress', {
+                    generationId,
+                    message: 'Generating card content with AI...',
+                    progress: 0,
+                    totalCards: 0,
+                    stage: 'initializing'
+                })
+            }
+
+            const { cards, completion } = await this.generateCardContent(title, description, category)
             const duration = Date.now() - startTime
             console.log('AiSetSequence.generateSet - Generated cards:', cards)
 
@@ -333,8 +381,19 @@ class AiSetSequence {
                 }
             }
 
+            // Emit progress update before processing images
+            if (socket && generationId) {
+                socket.emit('generationProgress', {
+                    generationId,
+                    message: `Generated ${cards.length} cards, now processing images...`,
+                    progress: 10,
+                    totalCards: cards.length,
+                    stage: 'content_generated'
+                })
+            }
+
             // 2. Process cards with images
-            const processedCards = await this.processAllCards(cards, userId)
+            const processedCards = await this.processAllCards(cards, userId, socket, generationId)
 
             return {
                 success: true,

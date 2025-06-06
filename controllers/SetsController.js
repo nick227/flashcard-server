@@ -251,8 +251,6 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
-
-
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
                 return res.status(400).json(responseFormatter.formatError({
@@ -270,8 +268,6 @@ class SetsController extends ApiController {
                 ...req.query,
                 userId: req.user ? req.user.id : null
             });
-
-
 
             // Build where clause for set type
             let whereClause = {};
@@ -298,6 +294,12 @@ class SetsController extends ApiController {
                         break;
                 }
             }
+
+            // Always filter out hidden sets for browse/list
+            whereClause = {
+                ...whereClause,
+                hidden: false
+            };
 
             try {
                 // If category name is provided, find the category ID
@@ -336,7 +338,6 @@ class SetsController extends ApiController {
 
                 // Add search conditions if search query is provided
                 if (params.search) {
-
                     try {
                         const searchConditions = this.searchService.buildSearchConditions(params.search);
                         whereClause = {
@@ -396,7 +397,6 @@ class SetsController extends ApiController {
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
 
-
                 // Transform the results
                 result.items = result.items.map(set => {
                     try {
@@ -413,6 +413,7 @@ class SetsController extends ApiController {
                             } : null,
                             image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
                             price: parseFloat(set.price) || 0,
+                            hidden: Boolean(set.hidden),
                             tags: set.tags ? set.tags.map(tag => tag.name) : []
                         };
                     } catch (transformError) {
@@ -500,8 +501,18 @@ class SetsController extends ApiController {
 
             return res.json(transformedResult);
         } catch (err) {
+            // Custom handling for hidden sets
+            if (err.name === 'SetAccessError' && err.details && err.details.code === 'SET_HIDDEN') {
+                return res.status(403).json({
+                    error: 'SET_HIDDEN',
+                    message: 'This set is hidden or unavailable.'
+                });
+            }
+            // Log stack only for unexpected errors
             console.error('SetsController.get - Error:', err);
-            console.error('Error stack:', err.stack);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Error stack:', err.stack);
+            }
             console.error('Request details:', {
                 params: req.params,
                 user: req.user ? { id: req.user.id } : 'No user',
@@ -541,13 +552,11 @@ class SetsController extends ApiController {
                 }));
             }
 
-
             const result = await this.model.sequelize.models.History.count({
                 where: {
                     set_id: setId
                 }
             });
-
 
             return res.json({ count: result || 0 });
         } catch (err) {
@@ -568,13 +577,11 @@ class SetsController extends ApiController {
                 }));
             }
 
-
             const result = await this.model.sequelize.models.UserLike.count({
                 where: {
                     set_id: setId
                 }
             });
-
 
             return res.json({ count: result || 0 });
         } catch (err) {
@@ -595,13 +602,11 @@ class SetsController extends ApiController {
                 }));
             }
 
-
             const result = await this.model.sequelize.models.Card.count({
                 where: {
                     set_id: setId
                 }
             });
-
 
             return res.json({ count: result || 0 });
         } catch (err) {
@@ -682,7 +687,6 @@ class SetsController extends ApiController {
 
     async getLikedSets(req, res) {
         try {
-
             const userId = req.query.userId || req.query.user_id;
             if (!userId) {
                 return res.status(401).json(responseFormatter.formatError({

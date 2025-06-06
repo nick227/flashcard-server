@@ -19,6 +19,7 @@ class SetTransformer {
             thumbnail: set.thumbnail,
             price: set.price,
             is_subscriber_only: set.is_subscriber_only,
+            hidden: Boolean(set.hidden),
             tags: set.tags ? set.tags.map(tag => tag.name) : [],
             cards: set.cards || [],
             createdAt: set.created_at,

@@ -41,9 +41,10 @@ class AIService {
         }
     }
 
-    async generateCards(title, description, userId) {
+    async generateCards(title, description, category, userId, socket = null, generationId = null) {
         try {
-            const result = await this.aiSetSequence.generateSet(title, description, userId)
+            // Generate cards using AI sequence
+            const result = await this.aiSetSequence.generateSet(title, description, category, userId, socket, generationId)
 
             if (!result.success) {
                 throw new Error(result.error || 'Failed to generate cards')
@@ -52,32 +53,18 @@ class AIService {
             // Record the successful request
             const request = await this.recordRequest({
                 userId,
-                prompt: `Generate cards for "${title}" with description: "${description}"`,
+                prompt: `Generate cards for "${title}" with description: "${description}" and category: "${category}"`,
                 completion: result.completion,
                 duration: result.duration
             })
 
-            // Return the cards directly from the result
-            return result.cards
+            // Return both cards and request ID
+            return {
+                cards: result.cards,
+                requestId: result.completion.model || 'unknown'
+            }
         } catch (error) {
-            console.error('AIService.generateCards - Error details:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                response: error.response
-            })
-
-            const errorStatus = this.determineErrorStatus(error)
-
-            // Record the failed request
-            await this.recordRequest({
-                userId,
-                prompt: `Generate cards for "${title}" with description: "${description}"`,
-                error,
-                errorStatus,
-                duration: error.duration || 0
-            })
-
+            console.error('Error generating cards:', error)
             throw error
         }
     }
