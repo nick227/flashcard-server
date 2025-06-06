@@ -352,6 +352,14 @@ class SetsController extends ApiController {
                     }
                 }
 
+                console.log('Incoming query:', req.query);
+                // After building whereClause
+                console.log('Final whereClause:', whereClause);
+
+                if (req.query.educator_id) {
+                    whereClause.educator_id = req.query.educator_id;
+                }
+
                 const paginationOptions = {
                     where: whereClause,
                     filters: {
@@ -396,6 +404,7 @@ class SetsController extends ApiController {
                 };
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
+                console.log('Sets found:', result.items.length);
 
                 // Transform the results
                 result.items = result.items.map(set => {
