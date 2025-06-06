@@ -33,12 +33,23 @@ class CategoriesController extends ApiController {
                                 hidden: false // Only include non-hidden sets
                             }
                         }],
-                        attributes: ['id', 'name'],
+                        attributes: [
+                            'id',
+                            'name', [
+                                this.model.sequelize.literal(`(
+                                    SELECT COUNT(*)
+                                    FROM sets
+                                    WHERE sets.category_id = Category.id
+                                    AND sets.hidden = false
+                                )`),
+                                'setCount'
+                            ]
+                        ],
                         group: ['Category.id', 'Category.name'],
                         order: [
                             ['name', 'ASC']
                         ],
-                        raw: false // Ensure we get model instances
+                        raw: true
                     });
 
                     return res.json(categoriesInUse);
@@ -58,11 +69,22 @@ class CategoriesController extends ApiController {
 
             // Default behavior: return all categories
             const categories = await this.model.scope(null).findAll({
-                attributes: ['id', 'name'],
+                attributes: [
+                    'id',
+                    'name', [
+                        this.model.sequelize.literal(`(
+                            SELECT COUNT(*)
+                            FROM sets
+                            WHERE sets.category_id = Category.id
+                            AND sets.hidden = false
+                        )`),
+                        'setCount'
+                    ]
+                ],
                 order: [
                     ['name', 'ASC']
                 ],
-                raw: false // Ensure we get model instances
+                raw: true // We need raw: true to get the literal count
             });
 
             return res.json(categories);
