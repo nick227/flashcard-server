@@ -147,6 +147,15 @@ class UsersController extends ApiController {
             res.status(500).json({ message: 'Failed to update user' });
         }
     }
+
+    async count(req, res) {
+        try {
+            const count = await this.model.count();
+            res.json({ count });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    }
 }
 
 module.exports = UsersController;

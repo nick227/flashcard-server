@@ -32,6 +32,12 @@ router.get('/liked', jwtAuth, setsController.getLikedSets.bind(setsController));
 // #swagger.responses[200] = { description: 'List of flashcard sets', schema: { type: 'array', items: { $ref: '#/definitions/Set' } } }
 router.get('/', (req, res) => setsController.list(req, res));
 
+// GET /sets/count
+// #swagger.tags = ['Sets']
+// #swagger.description = 'Get the total count of flashcard sets'
+// #swagger.responses[200] = { description: 'Count of flashcard sets', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
+router.get('/count', (req, res) => setsController.count(req, res));
+
 // GET /sets/:id
 // #swagger.tags = ['Sets']
 // #swagger.description = 'Get a specific flashcard set'

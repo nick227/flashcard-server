@@ -38,6 +38,7 @@ const Transaction = require('./models/transaction')(sequelize);
 const History = require('./models/history')(sequelize);
 const OpenAIRequest = require('./models/openaiRequest')(sequelize);
 const GenerationSession = require('./models/GenerationSession')(sequelize);
+const NewsletterSubscriber = require('./models/NewsletterSubscriber')(sequelize);
 
 // Create models object for associations
 const models = {
@@ -54,7 +55,8 @@ const models = {
     Transaction,
     History,
     OpenAIRequest,
-    GenerationSession
+    GenerationSession,
+    NewsletterSubscriber
 };
 
 // Set up associations
@@ -125,5 +127,6 @@ module.exports = {
     User,
     OpenAIRequest,
     GenerationSession,
+    NewsletterSubscriber,
     ...models
 };

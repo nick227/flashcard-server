@@ -179,5 +179,13 @@ CREATE TABLE IF NOT EXISTS generation_sessions (
     current_operation TEXT
 );
 
+-- Newsletter Subscribers
+CREATE TABLE newsletter_subscribers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(191) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 
 

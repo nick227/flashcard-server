@@ -88,6 +88,15 @@ class CategoriesController extends ApiController {
             });
         }
     }
+
+    async count(req, res) {
+        try {
+            const count = await this.model.count();
+            res.json({ count });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    }
 }
 
 module.exports = CategoriesController;

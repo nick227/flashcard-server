@@ -32,6 +32,7 @@ const salesRouter = require('./routes/sales');
 const historyRouter = require('./routes/history');
 const aiRouter = require('./routes/ai.routes');
 const thumbnailRouter = require('./routes/thumbnail');
+const newsletterRouter = require('./routes/newsletter');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -294,6 +295,7 @@ app.use('/api/sales', salesRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/thumbnail', thumbnailRouter);
+app.use('/api/newsletter', newsletterRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

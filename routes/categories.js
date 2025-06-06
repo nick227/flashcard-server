@@ -5,6 +5,12 @@ const jwtAuth = require('../middleware/jwtAuth');
 const categoriesController = new CategoriesController();
 const router = express.Router();
 
+// GET /categories/count
+// #swagger.tags = ['Categories']
+// #swagger.description = 'Get the count of categories'
+// #swagger.responses[200] = { description: 'Count of categories', schema: { type: 'integer' } }
+router.get('/count', (req, res) => categoriesController.count(req, res));
+
 // GET /categories
 // #swagger.tags = ['Categories']
 // #swagger.description = 'Get all categories or only categories in use by sets'

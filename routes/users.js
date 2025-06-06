@@ -26,6 +26,29 @@ router.use((req, res, next) => {
 // #swagger.responses[200] = { description: 'Name existence check result', schema: { type: 'object', properties: { exists: { type: 'boolean' } } } }
 router.get('/name-exists', (req, res) => usersController.nameExists(req, res));
 
+// GET /users/count
+// #swagger.tags = ['Users']
+// #swagger.description = 'Get the count of users'
+// #swagger.responses[200] = { description: 'Count of users', schema: { type: 'integer' } }
+router.get('/count', (req, res) => usersController.count(req, res));
+
+// GET /users
+// #swagger.tags = ['Users']
+// #swagger.description = 'Get all users (admin only)'
+// #swagger.responses[200] = { description: 'Array of users', schema: { type: 'array', items: { $ref: '#/definitions/User' } } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+router.get('/', jwtAuth, (req, res) => usersController.list(req, res));
+
+// GET /users/:id
+// #swagger.tags = ['Users']
+// #swagger.description = 'Get a specific user by ID'
+// #swagger.parameters['id'] = { description: 'User ID' }
+// #swagger.responses[200] = { description: 'User details', schema: { $ref: '#/definitions/User' } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+// #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
+// #swagger.responses[404] = { description: 'User not found' }
+router.get('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
+
 // GET /users/me
 // #swagger.tags = ['Users']
 // #swagger.description = 'Get current user profile'
@@ -46,23 +69,6 @@ router.get('/me', jwtAuth, async(req, res) => {
     console.log('JWT /me final response:', userData);
     res.json(userData);
 });
-
-// GET /users
-// #swagger.tags = ['Users']
-// #swagger.description = 'Get all users (admin only)'
-// #swagger.responses[200] = { description: 'Array of users', schema: { type: 'array', items: { $ref: '#/definitions/User' } } }
-// #swagger.responses[401] = { description: 'Unauthorized' }
-router.get('/', jwtAuth, (req, res) => usersController.list(req, res));
-
-// GET /users/:id
-// #swagger.tags = ['Users']
-// #swagger.description = 'Get a specific user by ID'
-// #swagger.parameters['id'] = { description: 'User ID' }
-// #swagger.responses[200] = { description: 'User details', schema: { $ref: '#/definitions/User' } }
-// #swagger.responses[401] = { description: 'Unauthorized' }
-// #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
-// #swagger.responses[404] = { description: 'User not found' }
-router.get('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
 
 // POST /users
 // #swagger.tags = ['Users']

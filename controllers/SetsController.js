@@ -776,6 +776,15 @@ class SetsController extends ApiController {
             }));
         }
     }
+
+    async count(req, res) {
+        try {
+            const count = await this.model.count({ where: { hidden: false } });
+            res.json({ count });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    }
 }
 
 // Export the class itself, not an instance
