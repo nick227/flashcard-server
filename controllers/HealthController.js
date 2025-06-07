@@ -29,13 +29,29 @@ console.error = function(...args) {
 // --- Disk space utility (async, cross-platform) ---
 async function getDiskSpace() {
     try {
-        // Use root for Linux/macOS, C: for Windows
         const diskPath = process.platform === 'win32' ? 'C:' : '/';
         const info = await checkDiskSpace(diskPath);
-        return { free: info.free, total: info.size };
+        // Convert to GB and round to 2 decimal places
+        return {
+            free: Math.round((info.free / (1024 * 1024 * 1024)) * 100) / 100,
+            total: Math.round((info.size / (1024 * 1024 * 1024)) * 100) / 100,
+            used: Math.round(((info.size - info.free) / (1024 * 1024 * 1024)) * 100) / 100,
+            usedPercentage: Math.round(((info.size - info.free) / info.size) * 100)
+        };
     } catch {
-        return { free: null, total: null };
+        return { free: null, total: null, used: null, usedPercentage: null };
     }
+}
+
+// --- Format memory usage ---
+function formatMemoryUsage(memoryUsage) {
+    return {
+        rss: Math.round(memoryUsage.rss / (1024 * 1024) * 100) / 100, // MB
+        heapTotal: Math.round(memoryUsage.heapTotal / (1024 * 1024) * 100) / 100, // MB
+        heapUsed: Math.round(memoryUsage.heapUsed / (1024 * 1024) * 100) / 100, // MB
+        external: Math.round(memoryUsage.external / (1024 * 1024) * 100) / 100, // MB
+        arrayBuffers: Math.round(memoryUsage.arrayBuffers / (1024 * 1024) * 100) / 100 // MB
+    };
 }
 
 const HealthController = {
@@ -56,7 +72,21 @@ const HealthController = {
                         null;
                     if (!io.engine.ws) wsDetails = 'WebSocket engine not initialized';
                 } else {
-                    wsDetails = 'AISocketService.io or engine not initialized';
+                    // Try to initialize WebSocket if not already initialized
+                    if (!AISocketService.isInitialized) {
+                        wsDetails = 'Attempting to initialize WebSocket...';
+                        try {
+                            await AISocketService.initialize();
+                            websocketStatus = 'online';
+                            wsDetails = 'WebSocket initialized successfully';
+                        } catch (e) {
+                            websocketStatus = 'error';
+                            wsDetails = 'Failed to initialize WebSocket';
+                            wsLastError = e.message;
+                        }
+                    } else {
+                        wsDetails = 'AISocketService.io or engine not initialized';
+                    }
                 }
             } catch (e) {
                 websocketStatus = 'error';
@@ -74,7 +104,6 @@ const HealthController = {
                 await db.sequelize.authenticate();
                 dbStatus = 'online';
                 dbResponseTime = Date.now() - dbStart;
-                // MySQL version query
                 try {
                     const [versionResult] = await db.sequelize.query('SELECT VERSION() AS version');
                     dbVersion = versionResult[0].version || null;
@@ -98,24 +127,30 @@ const HealthController = {
             const openaiStart = Date.now();
             try {
                 if (AIService && AIService.openai) {
-                    // Optionally, make a lightweight API call here for a real check
-                    // await AIService.openai.listModels();
+                    // Make a lightweight API call to verify OpenAI configuration
+                    await AIService.openai.models.list();
                     openaiStatus = 'configured';
+                    openaiDetails = 'OpenAI API is configured and responding';
                 } else {
                     openaiStatus = 'not_configured';
                     openaiDetails = 'OpenAI API key or client not configured';
                 }
             } catch (e) {
-                openaiStatus = 'error';
-                openaiError = e.message;
-                openaiDetails = 'Error initializing or calling OpenAI';
+                if (e.message.includes('API key')) {
+                    openaiStatus = 'not_configured';
+                    openaiDetails = 'Invalid or missing OpenAI API key';
+                } else {
+                    openaiStatus = 'error';
+                    openaiError = e.message;
+                    openaiDetails = 'Error connecting to OpenAI API';
+                }
             } finally {
                 openaiResponseTime = Date.now() - openaiStart;
             }
 
             // --- Server/Process Info ---
             const uptime = process.uptime();
-            const memoryUsage = process.memoryUsage();
+            const memoryUsage = formatMemoryUsage(process.memoryUsage());
             const cpuLoad = os.loadavg();
             const diskSpace = await getDiskSpace();
 
@@ -127,7 +162,7 @@ const HealthController = {
                         userId,
                         count: data.count,
                         resetTime: data.resetTime
-                    })).slice(0, 10); // Only show up to 10 users
+                    })).slice(0, 10);
                 }
             } catch (e) {
                 rateLimitInfo = { error: e.message };
@@ -161,9 +196,9 @@ const HealthController = {
                     details: openaiDetails
                 },
                 server: {
-                    uptimeSeconds: uptime,
+                    uptimeSeconds: Math.round(uptime * 100) / 100,
                     memoryUsage,
-                    cpuLoad,
+                    cpuLoad: cpuLoad.map(load => Math.round(load * 100) / 100),
                     diskSpace,
                     nodeEnv: process.env.NODE_ENV,
                     time: new Date().toISOString()
@@ -174,7 +209,6 @@ const HealthController = {
 
             // --- HTML or JSON Output ---
             if (req.query.format === 'html') {
-                // Simple HTML table for human readability
                 let html = `<html><head><title>Health Check</title>
                 <style>
                     body { font-family: sans-serif; background: #f8f8fa; color: #222; }
@@ -203,9 +237,9 @@ const HealthController = {
                 </tr>
             </table>
             <p style='text-align:center;'>Server Uptime: ${health.server.uptimeSeconds.toFixed(1)}s<br>
-            Memory: ${(health.server.memoryUsage.rss / 1024 / 1024).toFixed(1)} MB RSS<br>
-            CPU Load: ${health.server.cpuLoad.map(x => x.toFixed(2)).join(', ')}<br>
-            Disk: Free ${(health.server.diskSpace.free / 1024 / 1024 / 1024).toFixed(2)} GB / Total ${(health.server.diskSpace.total / 1024 / 1024 / 1024).toFixed(2)} GB<br>
+            Memory: ${health.server.memoryUsage.rss} MB RSS<br>
+            CPU Load: ${health.server.cpuLoad.join(', ')}<br>
+            Disk: Free ${health.server.diskSpace.free} GB / Total ${health.server.diskSpace.total} GB (${health.server.diskSpace.usedPercentage}% used)<br>
             Time: ${health.server.time}</p>
             <h3 style='text-align:center;'>Recent Errors</h3>
             <table class='small'><tr><th>Time</th><th>Message</th></tr>
