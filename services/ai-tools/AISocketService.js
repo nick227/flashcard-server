@@ -211,7 +211,7 @@ class AISocketService {
         socket.userId = socket.user.id
 
         // Handle disconnection
-        socket.on('disconnect', (reason) => {
+        socket.on('disconnect', async(reason) => {
             socketHelper.logSocketEvent('disconnect', {
                 socketId: socket.id,
                 userId: socket.userId,
@@ -222,34 +222,28 @@ class AISocketService {
             // Clean up any active generations for this user
             if (socket.userId) {
                 const userGenerations = socketHelper.getUserActiveGenerations(this.activeGenerations, socket.userId)
-                Promise.all(userGenerations.map(async(id) => {
+                await Promise.all(userGenerations.map(async(id) => {
                     const generation = this.activeGenerations.get(id)
                     if (generation) {
-                        socketHelper.logSocketEvent('abort', {
-                            generationId: id,
-                            sessionId: generation.sessionId,
-                            reason
-                        })
-
-                        // Only update status if transition is valid
-                        const currentStatus = generation.currentStatus
-                        const newStatus = this.SESSION_STATUS.CANCELLED
-                        if (this.isValidStatusTransition(currentStatus, newStatus)) {
-                            await generationSessionService.updateProgress(generation.sessionId, {
-                                status: newStatus,
-                                errorMessage: `Generation cancelled: ${reason}`
-                            })
-                            generation.currentStatus = newStatus
-                        } else {
-                            console.log(`Skipping invalid status transition: ${currentStatus} -> ${newStatus}`)
+                        // Clear any timeouts
+                        if (generation.timeoutId) clearTimeout(generation.timeoutId)
+                            // Mark session as cancelled in DB if not already done
+                        if (generation.currentStatus !== this.SESSION_STATUS.COMPLETED &&
+                            generation.currentStatus !== this.SESSION_STATUS.FAILED &&
+                            generation.currentStatus !== this.SESSION_STATUS.CANCELLED) {
+                            try {
+                                await generationSessionService.updateProgress(generation.sessionId, {
+                                    status: this.SESSION_STATUS.CANCELLED,
+                                    errorMessage: `Generation cancelled: ${reason}`
+                                })
+                                generation.currentStatus = this.SESSION_STATUS.CANCELLED
+                            } catch (err) {
+                                console.error('Error updating session to cancelled on disconnect:', err)
+                            }
                         }
-
-                        // Clean up generation tracking
                         this.activeGenerations.delete(id)
                     }
-                })).catch(error => {
-                    console.error('Error during generation cleanup:', error)
-                })
+                }))
             }
         })
 
@@ -525,6 +519,8 @@ class AISocketService {
             console.error('Error streaming cards:', error)
             await this.handleGenerationError(socket, generationId, generation.sessionId, error)
         } finally {
+            // Clean up generation tracking and timeouts
+            if (generation && generation.timeoutId) clearTimeout(generation.timeoutId)
             this.activeGenerations.delete(generationId)
         }
     }
@@ -554,6 +550,8 @@ class AISocketService {
         })
         if (generation) {
             generation.currentStatus = this.SESSION_STATUS.FAILED
+            if (generation.timeoutId) clearTimeout(generation.timeoutId)
+            this.activeGenerations.delete(generationId)
         }
 
         socket.emit('generationError', {
@@ -579,27 +577,21 @@ class AISocketService {
         // Clean up any active generations for this socket
         if (socket.userId) {
             const userGenerations = socketHelper.getUserActiveGenerations(this.activeGenerations, socket.userId)
-            Promise.all(userGenerations.map(async(id) => {
+            userGenerations.forEach(id => {
                 const generation = this.activeGenerations.get(id)
                 if (generation) {
-                    // Only update status if transition is valid
-                    const currentStatus = generation.currentStatus
-                    const newStatus = this.SESSION_STATUS.FAILED
-                    if (this.isValidStatusTransition(currentStatus, newStatus)) {
-                        await generationSessionService.updateProgress(generation.sessionId, {
-                            status: newStatus,
+                    if (generation.timeoutId) clearTimeout(generation.timeoutId)
+                    if (generation.currentStatus !== this.SESSION_STATUS.COMPLETED &&
+                        generation.currentStatus !== this.SESSION_STATUS.FAILED &&
+                        generation.currentStatus !== this.SESSION_STATUS.CANCELLED) {
+                        generationSessionService.updateProgress(generation.sessionId, {
+                            status: this.SESSION_STATUS.FAILED,
                             errorMessage
                         })
-                        generation.currentStatus = newStatus
-                    } else {
-                        console.log(`Skipping invalid status transition: ${currentStatus} -> ${newStatus}`)
+                        generation.currentStatus = this.SESSION_STATUS.FAILED
                     }
-
-                    // Clean up generation tracking
                     this.activeGenerations.delete(id)
                 }
-            })).catch(cleanupError => {
-                console.error('Error during generation cleanup:', cleanupError)
             })
         }
 
