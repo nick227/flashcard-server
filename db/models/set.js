@@ -98,7 +98,36 @@ module.exports = (sequelize) => {
         modelName: 'Set',
         tableName: 'sets',
         timestamps: false,
-        underscored: true
+        underscored: true,
+        indexes: [{
+                name: 'idx_sets_category',
+                fields: ['category_id']
+            },
+            {
+                name: 'idx_sets_educator',
+                fields: ['educator_id']
+            },
+            {
+                name: 'idx_sets_created',
+                fields: ['created_at']
+            },
+            {
+                name: 'idx_sets_hidden',
+                fields: ['hidden']
+            },
+            {
+                name: 'idx_sets_price',
+                fields: ['price']
+            },
+            {
+                name: 'idx_sets_subscriber',
+                fields: ['is_subscriber_only']
+            },
+            {
+                name: 'idx_sets_title',
+                fields: ['title']
+            }
+        ]
     });
 
     return Set;

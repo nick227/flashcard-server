@@ -4,14 +4,31 @@ const SetsController = require('../controllers/SetsController');
 const jwtAuth = require('../middleware/jwtAuth');
 const requireOwnership = require('../middleware/requireOwnership');
 const uploadMiddleware = require('../middleware/upload');
+const { cache } = require('../services/cache/ApicacheWrapper');
+const { setHttpCacheHeaders, CACHE_DURATIONS } = require('../services/cache/httpCacheHeaders');
 
-// Create a new instance of SetsController
-const setsController = new SetsController();
+// Create a new instance of SetsController with the required model name
+const setsController = new SetsController('Set');
 
 // Add route logging middleware
 router.use((req, res, next) => {
+    console.log(`[Sets] ${req.method} ${req.url}`);
     next();
 });
+
+// Add logging middleware for batch routes
+router.use('/batch/:type', (req, res, next) => {
+    console.log('Sets Router - Batch request received:', {
+        type: req.params.type,
+        query: req.query,
+        path: req.path,
+        fullUrl: req.originalUrl
+    });
+    next();
+});
+
+// Batch routes
+router.get('/batch/:type', setsController.batchGet.bind(setsController));
 
 // Public routes
 // GET /sets/liked
@@ -30,7 +47,18 @@ router.get('/liked', jwtAuth, setsController.getLikedSets.bind(setsController));
 // #swagger.parameters['tag'] = { in: 'query', description: 'Filter by tag ID', type: 'integer' }
 // #swagger.parameters['search'] = { in: 'query', description: 'Search term', type: 'string' }
 // #swagger.responses[200] = { description: 'List of flashcard sets', schema: { type: 'array', items: { $ref: '#/definitions/Set' } } }
-router.get('/', (req, res) => setsController.list(req, res));
+router.get(
+    '/',
+    cache('5 minutes'),
+    (req, res, next) => {
+        // Use stale-while-revalidate for list endpoints
+        setHttpCacheHeaders(res, CACHE_DURATIONS.MEDIUM, {
+            staleWhileRevalidate: true
+        });
+        next();
+    },
+    setsController.list.bind(setsController)
+);
 
 // GET /sets/count
 // #swagger.tags = ['Sets']
@@ -44,7 +72,17 @@ router.get('/count', (req, res) => setsController.count(req, res));
 // #swagger.parameters['id'] = { in: 'path', description: 'Set ID', required: true, type: 'integer' }
 // #swagger.responses[200] = { description: 'Set details', schema: { $ref: '#/definitions/Set' } }
 // #swagger.responses[404] = { description: 'Set not found' }
-router.get('/:id', jwtAuth, (req, res) => setsController.get(req, res));
+router.get(
+    '/:id',
+    cache('5 minutes'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.MEDIUM, {
+            staleWhileRevalidate: true
+        });
+        next();
+    },
+    setsController.get.bind(setsController)
+);
 
 // GET /sets/:id/likes
 // #swagger.tags = ['Sets']
@@ -52,7 +90,15 @@ router.get('/:id', jwtAuth, (req, res) => setsController.get(req, res));
 // #swagger.parameters['id'] = { description: 'Set ID' }
 // #swagger.responses[200] = { description: 'Like count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
 // #swagger.responses[404] = { description: 'Set not found' }
-router.get('/:id/likes', setsController.getLikesCount.bind(setsController));
+router.get(
+    '/:id/likes',
+    cache('1 minute'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.SHORT);
+        next();
+    },
+    setsController.getLikesCount.bind(setsController)
+);
 
 // GET /sets/:id/views
 // #swagger.tags = ['Sets']
@@ -60,7 +106,15 @@ router.get('/:id/likes', setsController.getLikesCount.bind(setsController));
 // #swagger.parameters['id'] = { description: 'Set ID' }
 // #swagger.responses[200] = { description: 'View count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
 // #swagger.responses[404] = { description: 'Set not found' }
-router.get('/:id/views', setsController.getViewsCount.bind(setsController));
+router.get(
+    '/:id/views',
+    cache('1 minute'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.SHORT);
+        next();
+    },
+    setsController.getViewsCount.bind(setsController)
+);
 
 // GET /sets/:id/cards
 // #swagger.tags = ['Sets']
@@ -68,7 +122,15 @@ router.get('/:id/views', setsController.getViewsCount.bind(setsController));
 // #swagger.parameters['id'] = { description: 'Set ID' }
 // #swagger.responses[200] = { description: 'Card count', schema: { type: 'object', properties: { count: { type: 'integer' } } } }
 // #swagger.responses[404] = { description: 'Set not found' }
-router.get('/:id/cards', setsController.getCardsCount.bind(setsController));
+router.get(
+    '/:id/cards',
+    cache('5 minutes'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.MEDIUM);
+        next();
+    },
+    setsController.getCardsCount.bind(setsController)
+);
 
 // GET /sets/:id/likes/user
 // #swagger.tags = ['Sets']
@@ -109,7 +171,7 @@ router.post('/',
     jwtAuth,
     uploadMiddleware.upload('thumbnail'),
     uploadMiddleware.handleMulterError,
-    (req, res) => setsController.create(req, res)
+    setsController.create.bind(setsController)
 );
 
 // PUT /sets/:id
@@ -144,7 +206,7 @@ router.patch('/:id',
     requireOwnership('id', 'set'),
     uploadMiddleware.upload('image'),
     uploadMiddleware.handleMulterError,
-    (req, res) => setsController.update(req, res)
+    setsController.update.bind(setsController)
 );
 
 // DELETE /sets/:id
@@ -159,7 +221,7 @@ router.patch('/:id',
 router.delete('/:id',
     jwtAuth,
     requireOwnership('id', 'set'),
-    (req, res) => setsController.delete(req, res)
+    setsController.delete.bind(setsController)
 );
 
 // POST /sets/:id/toggle-hidden
@@ -183,5 +245,8 @@ router.post('/:id/like', jwtAuth, setsController.toggleLikeSet.bind(setsControll
 
 // POST /sets/:id/remove-tag
 router.post('/:id/remove-tag', jwtAuth, setsController.removeTag.bind(setsController));
+
+// POST /sets/:id/view
+router.post('/:id/view', setsController.addView.bind(setsController));
 
 module.exports = router;

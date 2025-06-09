@@ -1,9 +1,13 @@
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const app = express();
+
+// Enable gzip compression for all responses
+app.use(compression());
 
 // Trust proxy - Add this before any middleware
 app.set('trust proxy', 1);
@@ -34,6 +38,7 @@ const aiRouter = require('./routes/ai.routes');
 const thumbnailRouter = require('./routes/thumbnail');
 const newsletterRouter = require('./routes/newsletter');
 const healthRouter = require('./routes/health');
+const adminRouter = require('./routes/admin');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -103,7 +108,7 @@ app.use(cors({
 
 // Add request logging middleware with more details
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - Origin: ${req.headers.origin} - IP: ${req.ip}`);
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
 });
 
@@ -298,6 +303,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/thumbnail', thumbnailRouter);
 app.use('/api/newsletter', newsletterRouter);
 app.use('/api/health', healthRouter);
+app.use('/admin', adminRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

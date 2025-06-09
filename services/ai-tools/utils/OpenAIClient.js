@@ -1,5 +1,6 @@
 const openai = require('../../../config/openai')
 const { REQUEST_TIMEOUT, MAX_TOKENS, MAX_PROMPT_LENGTH, ERROR_MESSAGES } = require('./constants')
+const queueService = require('../../QueueService')
 
 class OpenAIClient {
     constructor() {
@@ -44,12 +45,15 @@ class OpenAIClient {
                 requestOptions.function_call = options.function_call
             }
 
-            return await Promise.race([
-                this.openai.chat.completions.create(requestOptions),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error(ERROR_MESSAGES.REQUEST_TIMEOUT)), REQUEST_TIMEOUT)
-                )
-            ])
+            // Use the global queue for throttling
+            return await queueService.addToQueue(() =>
+                Promise.race([
+                    this.openai.chat.completions.create(requestOptions),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error(ERROR_MESSAGES.REQUEST_TIMEOUT)), REQUEST_TIMEOUT)
+                    )
+                ])
+            )
         } catch (error) {
             if (error.message === ERROR_MESSAGES.REQUEST_TIMEOUT) {
                 throw new Error(ERROR_MESSAGES.REQUEST_TIMEOUT)

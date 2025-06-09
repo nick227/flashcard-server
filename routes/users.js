@@ -151,6 +151,15 @@ router.patch('/:id',
     (req, res) => usersController.update(req, res)
 );
 
+// PATCH /users/role
+// #swagger.tags = ['Users']
+// #swagger.description = 'Update user role'
+// #swagger.parameters['body'] = { in: 'body', description: 'Role data', schema: { type: 'object', properties: { role: { type: 'string', enum: ['user', 'educator', 'admin'] } } } }
+// #swagger.responses[200] = { description: 'User updated', schema: { $ref: '#/definitions/User' } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+// #swagger.responses[400] = { description: 'Invalid role' }
+router.patch('/role', jwtAuth, (req, res) => usersController.updateRole(req, res));
+
 // DELETE /users/:id
 // #swagger.tags = ['Users']
 // #swagger.description = 'Delete a user'

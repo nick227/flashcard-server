@@ -148,6 +148,59 @@ class UsersController extends ApiController {
         }
     }
 
+    async updateRole(req, res) {
+        try {
+            const { role } = req.body;
+            const userId = req.user.id;
+
+            // Validate role
+            const validRoles = ['user', 'educator', 'admin'];
+            if (!validRoles.includes(role)) {
+                return res.status(400).json({ message: 'Invalid role' });
+            }
+
+            // Get user with role included
+            const user = await db.User.findOne({
+                where: { id: userId },
+                include: [{ model: db.UserRole, as: 'UserRole', attributes: ['name'] }]
+            });
+
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
+            }
+
+            // Get role ID
+            const userRole = await db.UserRole.findOne({
+                where: { name: role }
+            });
+
+            if (!userRole) {
+                return res.status(400).json({ message: 'Invalid role' });
+            }
+
+            // Update role
+            await user.set({ role_id: userRole.id });
+            await user.save();
+
+            // Get fresh user data
+            const updatedUser = await db.User.findOne({
+                where: { id: userId },
+                include: [{ model: db.UserRole, as: 'UserRole', attributes: ['name'] }]
+            });
+
+            if (!updatedUser) {
+                throw new Error('Failed to fetch updated user data');
+            }
+
+            const formatted = responseFormatter.formatUser(updatedUser);
+
+            res.json(formatted);
+        } catch (err) {
+            console.error('Error in UsersController.updateRole:', err);
+            res.status(500).json({ message: 'Failed to update user role' });
+        }
+    }
+
     async count(req, res) {
         try {
             const count = await this.model.count();

@@ -1,6 +1,5 @@
 const AIService = require('../services/ai-tools/AIService')
 const db = require('../db')
-const { Op } = require('sequelize')
 
 // Development timeout settings
 const DEV_TIMEOUT = 300000 // 5 minutes for development

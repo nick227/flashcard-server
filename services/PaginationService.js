@@ -49,13 +49,14 @@ class PaginationService {
             }
         });
 
-        // Get total count with the same include conditions
+        // Get total count with a simpler query
         const total = await model.count({
             where: whereClause,
-            include: include,
-            distinct: true
+            distinct: true,
+            col: model.primaryKeyAttribute
         });
 
+        // Get items with optimized includes
         const items = await model.findAll({
             where: whereClause,
             order: [
@@ -63,19 +64,16 @@ class PaginationService {
             ],
             limit,
             offset,
-            include,
+            include: include.length > 0 ? include : undefined,
+            subQuery: false,
             raw: false,
-            nest: true,
-            plain: false
+            nest: false
         });
 
-        // Transform the results to ensure proper nesting
-        const transformedItems = items.map(item => {
-            const plainItem = item.get({ plain: true });
-            return plainItem;
-        });
+        // Transform the results efficiently
+        const transformedItems = items.map(item => item.get({ plain: true }));
 
-        const result = {
+        return {
             items: transformedItems,
             pagination: {
                 total,
@@ -84,8 +82,6 @@ class PaginationService {
                 totalPages: Math.ceil(total / limit)
             }
         };
-
-        return result;
     }
 
     /**

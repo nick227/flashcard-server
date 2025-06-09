@@ -25,10 +25,7 @@ module.exports = (sequelize) => {
         modelName: 'Category',
         tableName: 'categories',
         timestamps: false,
-        underscored: true,
-        defaultScope: {
-            raw: true
-        }
+        underscored: true
     });
 
     return Category;

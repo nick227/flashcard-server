@@ -15,6 +15,19 @@ class SetsController extends ApiController {
         this.searchService = new SearchService(this.model);
     }
 
+    // Override batchGet to add logging
+    async batchGet(req, res) {
+        try {
+            await super.batchGet(req, res);
+        } catch (err) {
+            console.error('SetsController.batchGet - Error:', err);
+            res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to get batch data',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
+        }
+    }
+
     // Convert relative path to full URL
     convertPathToUrl(path) {
         if (!path) return null;
@@ -251,8 +264,11 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
+            console.log('SetsController.list - Starting with query:', req.query);
+
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
+                console.log('Validation errors:', errors);
                 return res.status(400).json(responseFormatter.formatError({
                     message: errors.join(', '),
                     errors
@@ -261,6 +277,7 @@ class SetsController extends ApiController {
 
             // Validate filter values
             if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
+                console.log('Invalid educator ID:', req.query.educatorId);
                 return res.status(400).json({ error: 'Invalid educator ID' });
             }
 
@@ -268,19 +285,26 @@ class SetsController extends ApiController {
                 ...req.query,
                 userId: req.user ? req.user.id : null
             });
+            console.log('Parsed params:', params);
 
             // Build where clause for set type
-            let whereClause = {};
+            let whereClause = {
+                hidden: false // Always filter out hidden sets
+            };
+
             if (req.query.setType) {
+                console.log('Building where clause for set type:', req.query.setType);
                 switch (req.query.setType) {
                     case 'free':
                         whereClause = {
+                            ...whereClause,
                             price: 0,
                             is_subscriber_only: 0
                         };
                         break;
                     case 'premium':
                         whereClause = {
+                            ...whereClause,
                             price: {
                                 [Op.gt]: 0
                             },
@@ -289,29 +313,28 @@ class SetsController extends ApiController {
                         break;
                     case 'subscriber':
                         whereClause = {
+                            ...whereClause,
                             is_subscriber_only: 1
                         };
                         break;
                 }
             }
 
-            // Always filter out hidden sets for browse/list
-            whereClause = {
-                ...whereClause,
-                hidden: false
-            };
-
             try {
                 // If category name is provided, find the category ID
                 let categoryId = null;
                 if (req.query.category) {
+                    console.log('Looking up category:', req.query.category);
                     const category = await this.model.sequelize.models.Category.findOne({
                         where: { name: req.query.category },
                         attributes: ['id']
                     });
                     if (category) {
                         categoryId = category.id;
+                        whereClause.category_id = categoryId;
+                        console.log('Found category ID:', categoryId);
                     } else {
+                        console.log('Category not found:', req.query.category);
                         return res.status(404).json({ error: 'Category not found' });
                     }
                 }
@@ -321,29 +344,18 @@ class SetsController extends ApiController {
                     sortBy: req.query.sortBy,
                     sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
                 } : this.parseSortParams(req.query.sortOrder || 'featured');
-
-                // Handle liked sets
-                if (req.query.liked === 'true') {
-                    const userId = req.query.userId || req.query.user_id;
-                    if (!userId) {
-                        return res.status(401).json(responseFormatter.formatError({
-                            message: 'User ID is required for liked sets'
-                        }));
-                    }
-
-                    whereClause = {
-                        ...whereClause
-                    };
-                }
+                console.log('Sort parameters:', { sortBy, sortOrder });
 
                 // Add search conditions if search query is provided
                 if (params.search) {
                     try {
+                        console.log('Building search conditions for:', params.search);
                         const searchConditions = this.searchService.buildSearchConditions(params.search);
                         whereClause = {
                             ...whereClause,
                             ...searchConditions
                         };
+                        console.log('Search conditions added:', searchConditions);
                     } catch (searchError) {
                         console.error('Search error:', searchError);
                         return res.status(400).json(responseFormatter.formatError({
@@ -352,12 +364,47 @@ class SetsController extends ApiController {
                     }
                 }
 
-                console.log('Incoming query:', req.query);
-                // After building whereClause
-                console.log('Final whereClause:', whereClause);
-
                 if (req.query.educator_id) {
                     whereClause.educator_id = req.query.educator_id;
+                }
+
+                // Optimize includes based on what's needed
+                const includes = [{
+                    model: this.model.sequelize.models.Category,
+                    as: 'category',
+                    attributes: ['id', 'name']
+                }];
+
+                // Only include educator if needed
+                if (!req.query.educator_id) {
+                    includes.push({
+                        model: this.model.sequelize.models.User,
+                        as: 'educator',
+                        attributes: ['id', 'name', 'email', 'image']
+                    });
+                }
+
+                // Only include likes if needed
+                if (req.query.liked === 'true') {
+                    includes.push({
+                        model: this.model.sequelize.models.UserLike,
+                        as: 'likes',
+                        required: true,
+                        attributes: ['id', 'user_id'],
+                        where: {
+                            user_id: req.query.userId || req.query.user_id
+                        }
+                    });
+                }
+
+                // Only include tags if needed
+                if (req.query.tags || req.query.tag) {
+                    includes.push({
+                        model: this.model.sequelize.models.Tag,
+                        as: 'tags',
+                        through: { attributes: [] },
+                        attributes: ['id', 'name']
+                    });
                 }
 
                 const paginationOptions = {
@@ -375,33 +422,9 @@ class SetsController extends ApiController {
                         sortOrder
                     },
                     allowedSortFields: ['created_at', 'title', 'price', 'featured'],
-                    include: [{
-                            model: this.model.sequelize.models.Category,
-                            as: 'category',
-                            attributes: ['id', 'name']
-                        },
-                        {
-                            model: this.model.sequelize.models.User,
-                            as: 'educator',
-                            attributes: ['id', 'name', 'email', 'image']
-                        },
-                        {
-                            model: this.model.sequelize.models.UserLike,
-                            as: 'likes',
-                            required: req.query.liked === 'true',
-                            attributes: ['id', 'user_id'],
-                            where: req.query.liked === 'true' ? {
-                                user_id: req.query.userId || req.query.user_id
-                            } : undefined
-                        },
-                        {
-                            model: this.model.sequelize.models.Tag,
-                            as: 'tags',
-                            through: { attributes: [] },
-                            attributes: ['id', 'name']
-                        }
-                    ]
+                    include: includes
                 };
+                console.log('Pagination options:', JSON.stringify(paginationOptions, null, 2));
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
                 console.log('Sets found:', result.items.length);
@@ -552,7 +575,7 @@ class SetsController extends ApiController {
         }
     }
 
-    async getViewsCount(req, res) {
+    async getStatsCount(req, res, model, type) {
         try {
             const setId = parseInt(req.params.id, 10);
             if (isNaN(setId)) {
@@ -561,70 +584,30 @@ class SetsController extends ApiController {
                 }));
             }
 
-            const result = await this.model.sequelize.models.History.count({
-                where: {
-                    set_id: setId
-                }
+            const result = await model.count({
+                where: { set_id: setId }
             });
 
             return res.json({ count: result || 0 });
         } catch (err) {
-            console.error('SetsController.getViewsCount - Error:', err);
+            console.error(`SetsController.get${type}Count - Error:`, err);
             return res.status(500).json(responseFormatter.formatError({
-                message: 'Failed to get views count',
+                message: `Failed to get ${type} count`,
                 error: process.env.NODE_ENV === 'development' ? err.message : undefined
             }));
         }
+    }
+
+    async getViewsCount(req, res) {
+        return this.getStatsCount(req, res, this.model.sequelize.models.History, 'Views');
     }
 
     async getLikesCount(req, res) {
-        try {
-            const setId = parseInt(req.params.id, 10);
-            if (isNaN(setId)) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: 'Invalid set ID'
-                }));
-            }
-
-            const result = await this.model.sequelize.models.UserLike.count({
-                where: {
-                    set_id: setId
-                }
-            });
-
-            return res.json({ count: result || 0 });
-        } catch (err) {
-            console.error('SetsController.getLikesCount - Error:', err);
-            return res.status(500).json(responseFormatter.formatError({
-                message: 'Failed to get likes count',
-                error: process.env.NODE_ENV === 'development' ? err.message : undefined
-            }));
-        }
+        return this.getStatsCount(req, res, this.model.sequelize.models.UserLike, 'Likes');
     }
 
     async getCardsCount(req, res) {
-        try {
-            const setId = parseInt(req.params.id, 10);
-            if (isNaN(setId)) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: 'Invalid set ID'
-                }));
-            }
-
-            const result = await this.model.sequelize.models.Card.count({
-                where: {
-                    set_id: setId
-                }
-            });
-
-            return res.json({ count: result || 0 });
-        } catch (err) {
-            console.error('SetsController.getCardsCount - Error:', err);
-            return res.status(500).json(responseFormatter.formatError({
-                message: 'Failed to get cards count',
-                error: process.env.NODE_ENV === 'development' ? err.message : undefined
-            }));
-        }
+        return this.getStatsCount(req, res, this.model.sequelize.models.Card, 'Cards');
     }
 
     async toggleLikeSet(req, res) {
@@ -783,6 +766,40 @@ class SetsController extends ApiController {
             res.json({ count });
         } catch (err) {
             res.status(500).json({ error: err.message });
+        }
+    }
+
+    async addView(req, res) {
+        try {
+            const setId = parseInt(req.params.id, 10);
+            if (isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            // Check if set exists
+            const set = await this.model.findByPk(setId);
+            if (!set) {
+                return res.status(404).json(responseFormatter.formatError({
+                    message: 'Set not found'
+                }));
+            }
+
+            // Add view record
+            await this.model.sequelize.models.History.create({
+                set_id: setId,
+                user_id: req.user ? req.user.id : null,
+                action: 'view'
+            });
+
+            return res.json(responseFormatter.formatSuccess('View recorded successfully'));
+        } catch (err) {
+            console.error('SetsController.addView - Error:', err);
+            return res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to record view',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
         }
     }
 }

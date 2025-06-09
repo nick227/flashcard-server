@@ -1,6 +1,8 @@
 const express = require('express');
 const CategoriesController = require('../controllers/CategoriesController');
 const jwtAuth = require('../middleware/jwtAuth');
+const { cache } = require('../services/cache/ApicacheWrapper');
+const { setHttpCacheHeaders } = require('../services/cache/httpCacheHeaders');
 
 const categoriesController = new CategoriesController();
 const router = express.Router();
@@ -11,12 +13,15 @@ const router = express.Router();
 // #swagger.responses[200] = { description: 'Count of categories', schema: { type: 'integer' } }
 router.get('/count', (req, res) => categoriesController.count(req, res));
 
-// GET /categories
+// GET /categories - cache for 5 minutes
 // #swagger.tags = ['Categories']
 // #swagger.description = 'Get all categories or only categories in use by sets'
 // #swagger.parameters['inUse'] = { in: 'query', description: 'Filter to only show categories in use by sets', required: false, type: 'boolean' }
 // #swagger.responses[200] = { description: 'List of categories', schema: { type: 'array', items: { $ref: '#/definitions/Category' } } }
-router.get('/', categoriesController.list.bind(categoriesController));
+router.get('/', cache('5 minutes'), (req, res, next) => {
+    setHttpCacheHeaders(res, 300); // 5 minutes
+    categoriesController.list(req, res, next);
+});
 
 // GET /categories/:id
 // #swagger.tags = ['Categories']

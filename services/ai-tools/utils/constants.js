@@ -4,7 +4,6 @@ const CLEANUP_INTERVAL = 30000 // 30 seconds
 
 // Token limits
 const MAX_TOKENS = 4000
-const MAX_PROMPT_LENGTH = 4000
 
 // Error messages
 const ERROR_MESSAGES = {
@@ -16,9 +15,9 @@ const ERROR_MESSAGES = {
 
 module.exports = {
     // Card limits
-    MAX_FRONT_LENGTH: 100,
-    MAX_BACK_LENGTH: 200,
-    MIN_CARDS: 5,
+    MAX_FRONT_LENGTH: 1000,
+    MAX_BACK_LENGTH: 1000,
+    MIN_CARDS: 1,
     MAX_CARDS: 10,
 
     // Input limits

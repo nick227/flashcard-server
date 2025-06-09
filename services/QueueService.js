@@ -6,7 +6,7 @@ class QueueService extends EventEmitter {
         this.queue = []
         this.processing = false
         this.lastRequestTime = null
-        this.requestsPerMinute = 10000 // OpenAI's rate limit for GPT-4
+        this.requestsPerMinute = 60 // OpenAI's rate limit for GPT-4
         this.minTimeBetweenRequests = (60 * 1000) / this.requestsPerMinute
         this.maxTokensPerMinute = 300000 // GPT-4 token limit
         this.currentTokensThisMinute = 0
