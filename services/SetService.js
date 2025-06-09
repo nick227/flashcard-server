@@ -318,15 +318,44 @@ class SetService {
 
     // Private helper methods
     async handleTags(set, tagNames, transaction) {
+        console.log('[SetService] Handling tags for set:', {
+            setId: set.id,
+            tagNames,
+            tagNamesType: typeof tagNames,
+            isArray: Array.isArray(tagNames)
+        });
+
+        if (!Array.isArray(tagNames)) {
+            console.error('[SetService] Invalid tagNames:', tagNames);
+            throw new Error('Tags must be an array');
+        }
+
         const tags = await Promise.all(
             tagNames.map(async(name) => {
+                if (!name || typeof name !== 'string') {
+                    console.error('[SetService] Invalid tag name:', name);
+                    throw new Error('Invalid tag name');
+                }
+                const trimmedName = name.trim();
+                if (!trimmedName) {
+                    console.error('[SetService] Empty tag name after trim');
+                    throw new Error('Tag name cannot be empty');
+                }
+                console.log('[SetService] Finding or creating tag:', trimmedName);
                 const [tag] = await this.Tag.findOrCreate({
-                    where: { name: name.trim() },
+                    where: { name: trimmedName },
                     transaction
                 });
                 return tag;
             })
         );
+
+        console.log('[SetService] Setting tags for set:', {
+            setId: set.id,
+            tagCount: tags.length,
+            tagIds: tags.map(t => t.id)
+        });
+
         await set.setTags(tags, { transaction });
     }
 

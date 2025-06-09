@@ -118,7 +118,7 @@ class SetsController extends ApiController {
     parseParams(params) {
         return {
             page: parseInt(params.page) || 1,
-            limit: parseInt(params.limit) || 3,
+            limit: parseInt(params.limit) || 12,
             category: params.category,
             sortOrder: params.sortOrder || 'featured',
             educatorId: params.educatorId ? parseInt(params.educatorId, 10) : null,
@@ -397,15 +397,13 @@ class SetsController extends ApiController {
                     });
                 }
 
-                // Only include tags if needed
-                if (req.query.tags || req.query.tag) {
-                    includes.push({
-                        model: this.model.sequelize.models.Tag,
-                        as: 'tags',
-                        through: { attributes: [] },
-                        attributes: ['id', 'name']
-                    });
-                }
+                // Always include tags
+                includes.push({
+                    model: this.model.sequelize.models.Tag,
+                    as: 'tags',
+                    through: { attributes: [] },
+                    attributes: ['id', 'name']
+                });
 
                 const paginationOptions = {
                     where: whereClause,
@@ -437,7 +435,8 @@ class SetsController extends ApiController {
                             ...transformed,
                             category: set.category && set.category.name || 'Uncategorized',
                             categoryId: set.category && set.category.id,
-                            educatorName: set.educator && set.educator.name || 'Unknown',
+                            educatorName: set.educator.name || 'Unknown',
+                            educatorImage: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
                             educator: set.educator ? {
                                 id: set.educator.id,
                                 name: set.educator.name,
@@ -445,8 +444,7 @@ class SetsController extends ApiController {
                             } : null,
                             image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
                             price: parseFloat(set.price) || 0,
-                            hidden: Boolean(set.hidden),
-                            tags: set.tags ? set.tags.map(tag => tag.name) : []
+                            hidden: Boolean(set.hidden)
                         };
                     } catch (transformError) {
                         console.error('Error transforming set:', transformError);
@@ -528,6 +526,13 @@ class SetsController extends ApiController {
             // Transform the result to include tags
             const transformedResult = {
                 ...result,
+                educatorName: set.educator.name || 'Unknown',
+                educatorImage: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
+                educator: set.educator ? {
+                    id: set.educator.id,
+                    name: set.educator.name,
+                    image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
+                } : null,
                 tags: set.tags ? set.tags.map(tag => tag.name) : []
             };
 

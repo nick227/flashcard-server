@@ -27,7 +27,7 @@ class PaginationService {
         } = options;
 
         const page = parseInt(query.page) || 1;
-        const limit = parseInt(query.limit) || 10;
+        const limit = parseInt(query.limit);
         const offset = (page - 1) * limit;
 
         // Map sort field from camelCase to snake_case using centralized mapping
@@ -79,7 +79,8 @@ class PaginationService {
                 total,
                 page,
                 limit,
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil(total / limit),
+                hasMore: page < Math.ceil(total / limit)
             }
         };
     }
