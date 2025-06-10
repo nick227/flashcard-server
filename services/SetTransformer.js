@@ -4,14 +4,6 @@ class SetTransformer {
     static transformSet(set) {
         if (!set) return null;
 
-        console.log('[SetTransformer] Transforming set:', {
-            id: set.id,
-            hasTags: !!set.tags,
-            tagsType: set.tags ? typeof set.tags : 'undefined',
-            isArray: Array.isArray(set.tags),
-            tagsLength: set.tags ? set.tags.length : 0
-        });
-
         const transformedSet = {
             id: set.id,
             title: set.title,
@@ -30,19 +22,12 @@ class SetTransformer {
             hidden: Boolean(set.hidden),
             tags: Array.isArray(set.tags) ? set.tags.map(tag => {
                 const tagName = tag.name || tag;
-                console.log('[SetTransformer] Processing tag:', { tag, tagName });
                 return tagName;
             }) : [],
             cards: set.cards || [],
             createdAt: set.created_at,
             updatedAt: set.updated_at
         };
-
-        console.log('[SetTransformer] Transformed set:', {
-            id: transformedSet.id,
-            tagsLength: transformedSet.tags.length,
-            tags: transformedSet.tags
-        });
 
         return transformedSet;
     }

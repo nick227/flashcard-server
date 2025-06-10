@@ -12,18 +12,11 @@ const setsController = new SetsController('Set');
 
 // Add route logging middleware
 router.use((req, res, next) => {
-    console.log(`[Sets] ${req.method} ${req.url}`);
     next();
 });
 
 // Add logging middleware for batch routes
 router.use('/batch/:type', (req, res, next) => {
-    console.log('Sets Router - Batch request received:', {
-        type: req.params.type,
-        query: req.query,
-        path: req.path,
-        fullUrl: req.originalUrl
-    });
     next();
 });
 
