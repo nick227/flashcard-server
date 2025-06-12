@@ -58,16 +58,35 @@ router.get('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersControlle
 router.get('/me', jwtAuth, async(req, res) => {
     console.log('JWT /me req.user:', req.user);
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const db = require('../db');
-    const user = await db.User.findByPk(req.user.id, {
-        include: [{ model: db.UserRole, as: 'role', attributes: ['name'] }]
-    });
-    console.log('JWT /me response user.toJSON():', user && user.toJSON());
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const { password, role_id, role, ...userData } = user.toJSON();
-    userData.role = role && role.name;
-    console.log('JWT /me final response:', userData);
-    res.json(userData);
+
+    try {
+        const db = require('../db');
+        const user = await db.User.findByPk(req.user.id, {
+            include: [{ model: db.UserRole, as: 'role', attributes: ['name'] }]
+        });
+
+        console.log('JWT /me raw user data:', user && user.toJSON());
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Format user data
+        const formattedUser = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            bio: user.bio || null, // Ensure bio is included, default to null if undefined
+            role: user.role ? user.role.name : null,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+        };
+
+        console.log('JWT /me final response:', formattedUser);
+        res.json(formattedUser);
+    } catch (error) {
+        console.error('Error in /me endpoint:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // POST /users

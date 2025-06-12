@@ -40,8 +40,24 @@ class ResponseFormatter {
 
     formatUser(user) {
         if (!user) return null;
-        const { password, role_id, UserRole, ...userData } = user.toJSON();
-        userData.role = UserRole ? UserRole.name : null;
+
+        const userData = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            bio: user.bio,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+        };
+
+        // Add role if available
+        if (user.UserRole) {
+            userData.role = user.UserRole.name;
+        } else if (user.role) {
+            userData.role = user.role.name;
+        }
+
         return userData;
     }
 }
