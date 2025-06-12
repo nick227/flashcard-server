@@ -6,7 +6,8 @@ class CloudinaryService {
             resource_type: 'image',
             format: 'jpg',
             quality: 'auto',
-            fetch_format: 'auto'
+            fetch_format: 'auto',
+            secure: true // Force HTTPS
         }
 
         return new Promise((resolve, reject) => {
@@ -18,6 +19,10 @@ class CloudinaryService {
                     console.error('Cloudinary Upload Error:', error)
                     reject(new Error('Failed to upload image to Cloudinary'))
                 } else {
+                    // Ensure URL is HTTPS
+                    if (result.secure_url) {
+                        result.secure_url = result.secure_url.replace('http://', 'https://')
+                    }
                     resolve(result)
                 }
             }).end(imageBuffer)

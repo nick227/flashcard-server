@@ -21,7 +21,14 @@ router.use('/batch/:type', (req, res, next) => {
 });
 
 // Batch routes
-router.get('/batch/:type', setsController.batchGet.bind(setsController));
+router.get('/batch/:type',
+    cache('1 minute'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.SHORT);
+        next();
+    },
+    setsController.batchGet.bind(setsController)
+);
 
 // Public routes
 // GET /sets/liked

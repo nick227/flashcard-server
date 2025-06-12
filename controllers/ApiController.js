@@ -264,32 +264,46 @@ class ApiController {
      * Get view counts for multiple sets
      */
     async getBatchViews(ids) {
-        const views = await this.model.sequelize.models.History.findAll({
-            attributes: [
-                'set_id', [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-            ],
-            where: {
-                set_id: {
-                    [Op.in]: ids
+        try {
+            console.log('Getting batch views for IDs:', ids);
+
+            const views = await this.model.sequelize.models.History.findAll({
+                attributes: [
+                    'set_id', [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+                ],
+                where: {
+                    set_id: {
+                        [Op.in]: ids
+                    }
+                },
+                group: ['set_id'],
+                raw: true
+            });
+
+            console.log('Raw views data:', views);
+
+            const result = {};
+            views.forEach(view => {
+                result[view.set_id] = parseInt(view.count, 10);
+            });
+
+            // Fill in missing IDs with 0
+            ids.forEach(id => {
+                if (!result[id]) {
+                    result[id] = 0;
                 }
-            },
-            group: ['set_id'],
-            raw: true
-        });
+            });
 
-        const result = {};
-        views.forEach(view => {
-            result[view.set_id] = parseInt(view.count, 10);
-        });
-
-        // Fill in missing IDs with 0
-        ids.forEach(id => {
-            if (!result[id]) {
-                result[id] = 0;
-            }
-        });
-
-        return result;
+            console.log('Processed views result:', result);
+            return result;
+        } catch (err) {
+            console.error('Error in getBatchViews:', {
+                error: err.message,
+                stack: err.stack,
+                ids: ids
+            });
+            throw err;
+        }
     }
 
     /**
