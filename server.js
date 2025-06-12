@@ -320,6 +320,21 @@ app.use(express.urlencoded({ extended: true }));
 // Add JSON body parser
 app.use(express.json());
 
+// Add route parameter validation middleware
+app.use((req, res, next) => {
+    // Validate route parameters
+    const params = req.params;
+    for (const [key, value] of Object.entries(params)) {
+        if (value === undefined || value === null) {
+            return res.status(400).json({
+                error: 'Invalid Route Parameter',
+                message: `Missing or invalid parameter: ${key}`
+            });
+        }
+    }
+    next();
+});
+
 // Routes
 app.use('/api/users', usersRouter);
 app.use('/api/sets', setsRouter);

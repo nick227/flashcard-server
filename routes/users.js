@@ -47,7 +47,7 @@ router.get('/', jwtAuth, (req, res) => usersController.list(req, res));
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
-router.get('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
+router.get('/:id([0-9]+)', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
 
 // GET /users/me
 // #swagger.tags = ['Users']
@@ -107,7 +107,7 @@ router.post('/', jwtAuth, (req, res) => usersController.create(req, res));
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
-router.patch('/:id',
+router.patch('/:id([0-9]+)',
     (req, res, next) => {
         console.log('Users PATCH - Before Multer:', {
             method: req.method,
@@ -187,7 +187,7 @@ router.patch('/role', jwtAuth, (req, res) => usersController.updateRole(req, res
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
-router.delete('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.delete(req, res));
+router.delete('/:id([0-9]+)', jwtAuth, requireOwnership('id'), (req, res) => usersController.delete(req, res));
 
 const authController = new AuthController();
 
