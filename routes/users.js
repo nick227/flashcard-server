@@ -39,16 +39,6 @@ router.get('/count', (req, res) => usersController.count(req, res));
 // #swagger.responses[401] = { description: 'Unauthorized' }
 router.get('/', jwtAuth, (req, res) => usersController.list(req, res));
 
-// GET /users/:id
-// #swagger.tags = ['Users']
-// #swagger.description = 'Get a specific user by ID'
-// #swagger.parameters['id'] = { description: 'User ID' }
-// #swagger.responses[200] = { description: 'User details', schema: { $ref: '#/definitions/User' } }
-// #swagger.responses[401] = { description: 'Unauthorized' }
-// #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
-// #swagger.responses[404] = { description: 'User not found' }
-router.get('/:id([0-9]+)', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
-
 // GET /users/me
 // #swagger.tags = ['Users']
 // #swagger.description = 'Get current user profile'
@@ -62,7 +52,7 @@ router.get('/me', jwtAuth, async(req, res) => {
     try {
         const db = require('../db');
         const user = await db.User.findByPk(req.user.id, {
-            include: [{ model: db.UserRole, as: 'role', attributes: ['name'] }]
+            include: [{ model: db.UserRole, as: 'UserRole', attributes: ['name'] }]
         });
 
         console.log('JWT /me raw user data:', user && user.toJSON());
@@ -76,7 +66,7 @@ router.get('/me', jwtAuth, async(req, res) => {
             email: user.email,
             image: user.image,
             bio: user.bio || null, // Ensure bio is included, default to null if undefined
-            role: user.role ? user.role.name : null,
+            role: user.UserRole ? user.UserRole.name : null,
             created_at: user.created_at,
             updated_at: user.updated_at
         };
@@ -88,6 +78,16 @@ router.get('/me', jwtAuth, async(req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+// GET /users/:id
+// #swagger.tags = ['Users']
+// #swagger.description = 'Get a specific user by ID'
+// #swagger.parameters['id'] = { description: 'User ID' }
+// #swagger.responses[200] = { description: 'User details', schema: { $ref: '#/definitions/User' } }
+// #swagger.responses[401] = { description: 'Unauthorized' }
+// #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
+// #swagger.responses[404] = { description: 'User not found' }
+router.get('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.get(req, res));
 
 // POST /users
 // #swagger.tags = ['Users']
@@ -107,7 +107,7 @@ router.post('/', jwtAuth, (req, res) => usersController.create(req, res));
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
-router.patch('/:id([0-9]+)',
+router.patch('/:id',
     (req, res, next) => {
         console.log('Users PATCH - Before Multer:', {
             method: req.method,
@@ -187,7 +187,7 @@ router.patch('/role', jwtAuth, (req, res) => usersController.updateRole(req, res
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
-router.delete('/:id([0-9]+)', jwtAuth, requireOwnership('id'), (req, res) => usersController.delete(req, res));
+router.delete('/:id', jwtAuth, requireOwnership('id'), (req, res) => usersController.delete(req, res));
 
 const authController = new AuthController();
 

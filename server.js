@@ -46,47 +46,33 @@ const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 const allowedOrigins = isProduction ? [
-    'https://flashcard-client-phi.vercel.app', // Current production URL
+    'https://flashcard-client-phi.vercel.app',
     'https://flashcard-academy.vercel.app',
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
     'https://flashcardacademy.vercel.app',
-    'https://www.flashcardacademy.vercel.app',
-    'https://flashcard-academy-nick227s-projects.vercel.app'
+    'https://www.flashcardacademy.vercel.app'
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isProduction ? 1000 : 2000, // Increased limit for production
+    max: isProduction ? 500 : 1000, // Increased limit for production
     message: { error: 'Too many requests from this IP, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
-    // Skip rate limiting for OPTIONS requests (CORS preflight)
-    skip: (req) => {
-        return req.method === 'OPTIONS' || req.path.startsWith('/api/webhook');
-    },
+    // Skip rate limiting for webhook routes
+    skip: (req) => req.path.startsWith('/api/webhook'),
     // Add proxy configuration
     trustProxy: true,
     // Use X-Forwarded-For header
     keyGenerator: (req) => {
         return req.headers['x-forwarded-for'] || req.ip;
-    },
-    // Add handler for rate limit exceeded
-    handler: (req, res) => {
-        res.status(429).json({
-            error: 'Rate Limit Exceeded',
-            message: 'Too many requests, please try again later',
-            retryAfter: res.getHeader('Retry-After')
-        });
     }
 });
 
 // Apply rate limiting to all routes
 app.use('/api', apiLimiter);
-
-// Add CORS preflight handling
-app.options('*', cors()); // Enable preflight for all routes
 
 // Swagger setup
 const swaggerUi = require('swagger-ui-express');
@@ -96,54 +82,33 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // Clean environment variables
 const cleanUrl = (url) => {
     if (!url) return null;
-    try {
-        // Remove all semicolons and trailing slashes
-        const cleaned = url.replace(/;/g, '').replace(/\/+$/, '');
-        // Validate the URL format
-        new URL(cleaned);
-        return cleaned;
-    } catch (err) {
-        console.error('Invalid URL format:', url);
-        return null;
-    }
+    // Remove all semicolons and trailing slashes
+    return url.replace(/;/g, '').replace(/\/+$/, '');
 };
 
-// CORS middleware with better error handling and logging
+// CORS middleware with better error handling
 app.use(cors({
     origin: function(origin, callback) {
-        console.log('CORS - Request origin:', origin);
-        console.log('CORS - Allowed origins:', allowedOrigins);
-
         // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) {
-            console.log('CORS - No origin, allowing request');
-            return callback(null, true);
-        }
+        if (!origin) return callback(null, true);
 
         // Check if origin is in allowed list
         if (allowedOrigins.indexOf(origin) === -1) {
-            console.warn('CORS - Blocked request from origin:', origin);
+            console.warn('CORS blocked request from origin:', origin);
             return callback(new Error('Not allowed by CORS'), false);
         }
-
-        console.log('CORS - Allowing request from origin:', origin);
         return callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range', 'Retry-After'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
     maxAge: 86400 // 24 hours
 }));
 
 // Add request logging middleware with more details
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`, {
-        origin: req.headers.origin,
-        host: req.headers.host,
-        authorization: req.headers.authorization ? 'Bearer [HIDDEN]' : 'Not present',
-        contentType: req.headers['content-type']
-    });
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
 });
 
@@ -319,21 +284,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Add JSON body parser
 app.use(express.json());
-
-// Add route parameter validation middleware
-app.use((req, res, next) => {
-    // Validate route parameters
-    const params = req.params;
-    for (const [key, value] of Object.entries(params)) {
-        if (value === undefined || value === null) {
-            return res.status(400).json({
-                error: 'Invalid Route Parameter',
-                message: `Missing or invalid parameter: ${key}`
-            });
-        }
-    }
-    next();
-});
 
 // Routes
 app.use('/api/users', usersRouter);

@@ -9,7 +9,7 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 const db = require('../db');
 
-router.post('', async(req, res) => {
+router.post('/', async(req, res) => {
     const sig = req.headers['stripe-signature'];
 
     let event;
