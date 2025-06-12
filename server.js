@@ -96,8 +96,16 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // Clean environment variables
 const cleanUrl = (url) => {
     if (!url) return null;
-    // Remove all semicolons and trailing slashes
-    return url.replace(/;/g, '').replace(/\/+$/, '');
+    try {
+        // Remove all semicolons and trailing slashes
+        const cleaned = url.replace(/;/g, '').replace(/\/+$/, '');
+        // Validate the URL format
+        new URL(cleaned);
+        return cleaned;
+    } catch (err) {
+        console.error('Invalid URL format:', url);
+        return null;
+    }
 };
 
 // CORS middleware with better error handling and logging
