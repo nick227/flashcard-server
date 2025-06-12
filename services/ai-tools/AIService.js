@@ -8,6 +8,12 @@ const {
     ERROR_MESSAGES
 } = require('./utils/constants')
 const ErrorHandler = require('./utils/errorHandler')
+const { Server } = require('socket.io')
+const jwt = require('jsonwebtoken')
+const authService = require('../AuthService')
+const generationSessionService = require('./GenerationSessionService')
+const socketHelper = require('./AISocketHelper')
+const SingleCardFacePrompts = require('./prompts/SingleCardFacePrompts')
 
 // Development timeout settings
 const DEV_REQUEST_TIMEOUT = 300000 // 5 minutes for development
@@ -173,6 +179,45 @@ class AIService {
             request.controller.abort()
         }
         this.activeRequests.clear()
+    }
+
+    async generateSingleCardFace(side, title, description, category, otherSideContent, userId) {
+        try {
+            const functions = SingleCardFacePrompts.getFunctionCallFormat()
+
+            const completion = await this.client.callOpenAI(
+                SingleCardFacePrompts.getUserPrompt(side, title, description, category, otherSideContent), {
+                    functions,
+                    function_call: { name: "generateCardFace" },
+                    systemPrompt: SingleCardFacePrompts.getSystemPrompt()
+                }
+            )
+
+            const functionCall = completion.choices[0].message.function_call
+            if (!functionCall || functionCall.name !== "generateCardFace") {
+                throw new Error("Invalid response format from AI")
+            }
+
+            const result = JSON.parse(functionCall.arguments)
+            if (!result.text) {
+                throw new Error("No text generated")
+            }
+
+            // Record the successful request
+            await this.recordRequest({
+                userId,
+                prompt: `Generate ${side} content for "${title}" with description: "${description}" and category: "${category}"`,
+                completion: completion
+            })
+
+            return {
+                text: result.text,
+                requestId: completion.model || 'unknown'
+            }
+        } catch (error) {
+            console.error('Error generating single card face:', error)
+            throw error
+        }
     }
 }
 

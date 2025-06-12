@@ -250,6 +250,62 @@ class AISocketService {
         // Handle generation start
         socket.on('startGeneration', (data, callback) => this.handleGenerationStart(socket, data, callback))
 
+        // Handle single card face generation
+        socket.on('generateSingleCardFace', async(data, callback) => {
+            try {
+                const { side, title, description, category, otherSideContent } = data
+                const userId = socket.user.id
+
+                // Validate request
+                if (!side || !title || !description) {
+                    throw new Error('Missing required parameters')
+                }
+
+                // Create a minimal session for tracking
+                const session = await generationSessionService.createSession(
+                    userId,
+                    title,
+                    description,
+                    'pending',
+                    category
+                )
+
+                if (!session || !session.id) {
+                    throw new Error('Failed to create generation session')
+                }
+
+                try {
+                    // Update session status
+                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.PREPARING, 'Generating card content...')
+
+                    // Generate the content
+                    const result = await AIService.generateSingleCardFace(
+                        side,
+                        title,
+                        description,
+                        category,
+                        otherSideContent,
+                        userId
+                    )
+
+                    // Update session status to generating before completed
+                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.GENERATING, 'Generating card face...')
+
+                    // Update session status
+                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.COMPLETED, 'Generation complete')
+
+                    // Return the result
+                    if (callback) callback({ text: result.text })
+                } catch (error) {
+                    await this.handleGenerationError(socket, null, session.id, error)
+                    if (callback) callback({ error: error.message })
+                }
+            } catch (error) {
+                console.error('Single card face generation error:', error)
+                if (callback) callback({ error: error.message })
+            }
+        })
+
         // Handle errors
         socket.on('error', (error) => this.handleError(socket, error))
     }
