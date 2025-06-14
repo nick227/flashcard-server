@@ -51,13 +51,14 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-client-git-main-nick227s-projects.vercel.app',
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
     'https://flashcardacademy.vercel.app',
-    'https://www.flashcardacademy.vercel.app'
+    'https://www.flashcardacademy.vercel.app',
+    'https://flashcard-client-production.vercel.app'
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isProduction ? 500 : 1000, // Increased limit for production
+    max: isProduction ? 1000 : 2000, // Increased limit for production
     message: { error: 'Too many requests from this IP, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -68,6 +69,14 @@ const apiLimiter = rateLimit({
     // Use X-Forwarded-For header
     keyGenerator: (req) => {
         return req.headers['x-forwarded-for'] || req.ip;
+    },
+    // Add handler for rate limit exceeded
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'Rate Limit Exceeded',
+            message: 'Too many requests, please try again later',
+            retryAfter: res.getHeader('Retry-After')
+        });
     }
 });
 
