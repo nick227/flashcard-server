@@ -63,6 +63,16 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING(255),
             allowNull: true,
             field: 'audio_url'
+        },
+        layout_front: {
+            type: DataTypes.STRING(32),
+            allowNull: true,
+            field: 'layout_front'
+        },
+        layout_back: {
+            type: DataTypes.STRING(32),
+            allowNull: true,
+            field: 'layout_back'
         }
     }, {
         sequelize,

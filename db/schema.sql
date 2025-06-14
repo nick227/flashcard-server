@@ -77,6 +77,8 @@ CREATE TABLE cards (
     front TEXT NOT NULL,
     back TEXT NOT NULL,
     hint TEXT,
+    layout_front VARCHAR(32) DEFAULT 'default',
+    layout_back VARCHAR(32) DEFAULT 'default',
     has_audio TINYINT(1) DEFAULT 0,
     audio_url VARCHAR(255),
     front_image VARCHAR(255),

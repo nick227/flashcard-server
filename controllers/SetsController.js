@@ -56,6 +56,8 @@ class SetsController extends ApiController {
         }
 
         const errors = [];
+        const validLayouts = ['default', 'two-row', 'two-column'];
+
         cards.forEach((card, index) => {
             // Validate front
             if (!card.front || typeof card.front !== 'object') {
@@ -69,6 +71,9 @@ class SetsController extends ApiController {
                 }
                 if (card.front.imageUrl && typeof card.front.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Front imageUrl must be a string`);
+                }
+                if (card.layout_front && !validLayouts.includes(card.layout_front)) {
+                    errors.push(`Card ${index + 1}: Front layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
 
@@ -84,6 +89,9 @@ class SetsController extends ApiController {
                 }
                 if (card.back.imageUrl && typeof card.back.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Back imageUrl must be a string`);
+                }
+                if (card.layout_back && !validLayouts.includes(card.layout_back)) {
+                    errors.push(`Card ${index + 1}: Back layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
         });
@@ -495,7 +503,7 @@ class SetsController extends ApiController {
                     {
                         model: this.model.sequelize.models.Card,
                         as: 'cards',
-                        attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
+                        attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
                         required: false // Make it a LEFT JOIN to get sets even without cards
                     },
                     {

@@ -193,7 +193,7 @@ class SetService {
                 {
                     model: this.Card,
                     as: 'cards',
-                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
+                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
                     required: false,
                     raw: false // Ensure we get model instances
                 },
@@ -238,6 +238,8 @@ class SetService {
                 console.log('Card toJSON:', card.toJSON());
                 console.log('Card front_image:', card.front_image);
                 console.log('Card back_image:', card.back_image);
+                console.log('Card layout_front:', card.layout_front);
+                console.log('Card layout_back:', card.layout_back);
             }
 
             console.log('Raw database values:', set.cards.map(card => {
@@ -247,6 +249,8 @@ class SetService {
                     front_image: card.front_image,
                     back: card.back,
                     back_image: card.back_image,
+                    layout_front: card.layout_front,
+                    layout_back: card.layout_back,
                     allProps: Object.keys(card),
                     rawData: card.get({ plain: true })
                 };
@@ -265,7 +269,9 @@ class SetService {
                         text: card.back || '',
                         imageUrl: card.back_image || null
                     },
-                    hint: card.hint
+                    hint: card.hint,
+                    layout_front: card.layout_front || 'default',
+                    layout_back: card.layout_back || 'default'
                 };
                 console.log('Transformed card:', transformedCard);
                 return transformedCard;
@@ -385,7 +391,9 @@ class SetService {
                     front_image: card.front.imageUrl || null,
                     back_image: card.back.imageUrl || null,
                     hint: card.hint || null,
-                    set_id: set.id
+                    set_id: set.id,
+                    layout_front: card.layout_front || null,
+                    layout_back: card.layout_back || null
                 }, { transaction })
             )
         );
@@ -417,7 +425,7 @@ class SetService {
                 {
                     model: this.Card,
                     as: 'cards',
-                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image'],
+                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
                     required: false
                 },
                 {
@@ -435,13 +443,6 @@ class SetService {
 
         // Transform cards to include image URLs in the front/back objects
         if (set.cards) {
-            console.log('Raw cards from database:', set.cards.map(card => ({
-                front: card.front,
-                front_image: card.front_image,
-                back: card.back,
-                back_image: card.back_image
-            })));
-
             set.cards = set.cards.map(card => {
                 const transformedCard = {
                     id: card.id,
@@ -454,9 +455,10 @@ class SetService {
                         text: card.back || '',
                         imageUrl: card.back_image
                     },
-                    hint: card.hint
+                    hint: card.hint,
+                    layout_front: card.layout_front || 'default',
+                    layout_back: card.layout_back || 'default'
                 };
-                console.log('Transformed card:', transformedCard);
                 return transformedCard;
             });
         }
