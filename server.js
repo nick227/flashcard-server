@@ -95,7 +95,39 @@ const cleanUrl = (url) => {
     return url.replace(/;/g, '').replace(/\/+$/, '');
 };
 
-// CORS middleware with better error handling
+// Add MIME type handling middleware
+app.use((req, res, next) => {
+    // Handle TypeScript files
+    if (req.path.endsWith('.ts') || req.path.endsWith('.tsx')) {
+        res.type('application/javascript');
+        res.set('Content-Type', 'application/javascript');
+    }
+    // Add security headers
+    res.set({
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+    });
+    next();
+});
+
+// Add middleware to ensure HTTPS for all external resources
+app.use((req, res, next) => {
+    if (isProduction) {
+        // Ensure the request is using HTTPS
+        if (req.headers['x-forwarded-proto'] !== 'https') {
+            return res.redirect(`https://${req.headers.host}${req.url}`);
+        }
+    }
+    next();
+});
+
+// Update CORS configuration
 app.use(cors({
     origin: function(origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
@@ -112,18 +144,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 // 24 hours
+    maxAge: 86400, // 24 hours
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
-
-// Add MIME type handling middleware
-app.use((req, res, next) => {
-    if (req.path.endsWith('.ts')) {
-        res.type('application/javascript');
-    } else if (req.path.endsWith('.tsx')) {
-        res.type('application/javascript');
-    }
-    next();
-});
 
 // Add request logging middleware with more details
 app.use((req, res, next) => {
@@ -236,17 +260,6 @@ const publicDir = path.join(__dirname, 'public/images');
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
-});
-
-// Add middleware to ensure HTTPS for image URLs
-app.use((req, res, next) => {
-    if (isProduction && req.path.startsWith('/images/')) {
-        // Ensure the request is using HTTPS
-        if (req.headers['x-forwarded-proto'] !== 'https') {
-            return res.redirect(`https://${req.headers.host}${req.url}`);
-        }
-    }
-    next();
 });
 
 // Serve static files from public directory with security headers

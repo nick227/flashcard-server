@@ -21,8 +21,11 @@ class ThumbnailService {
                 throw new Error('Cloudinary error: Failed to upload image')
             }
 
+            // Ensure HTTPS URL
+            const secureUrl = uploadResult.secure_url.replace('http://', 'https://')
+
             return {
-                url: uploadResult.secure_url,
+                url: secureUrl,
                 public_id: uploadResult.public_id
             }
         } catch (error) {

@@ -21,7 +21,6 @@ const queueService = require('./QueueService')
 const db = require('../db')
 const {
     DEZGO_API_URL,
-    DEFAULT_GUIDANCE,
     REQUEST_TIMEOUT,
     MAX_RETRIES,
     RETRY_DELAY,
@@ -30,8 +29,8 @@ const {
 } = require('./ai-tools/image-tools/constants')
 
 // Constants for configuration
-const MAX_TITLE_LENGTH = 100
-const MAX_DESCRIPTION_LENGTH = 500
+const MAX_TITLE_LENGTH = 1000
+const MAX_DESCRIPTION_LENGTH = 1500
 
 class AiImageFluxService {
     /**
@@ -140,11 +139,11 @@ class AiImageFluxService {
         const cleanTitle = title.trim()
         const cleanDescription = description.trim()
 
-        return `Create a graphical thumbnail for: "${cleanTitle}". 
+        return `Create a preview image for: "${cleanTitle}". 
         
         Description: ${cleanDescription}. 
         
-        Style: creative, simple, meaningful, stylish, clean crisp lines, hires illustration.`
+        Default Style: creative, simple, meaningful.`
     }
 
     /**

@@ -41,10 +41,15 @@ class FileService {
             const finalPath = path.join(finalDir, filename);
 
             // Process and save image
-            await sharp(file.path)
-                .resize(800, 600, { fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 80 })
-                .toFile(finalPath);
+            try {
+                await sharp(file.path)
+                    .resize(800, 600, { fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 80 })
+                    .toFile(finalPath);
+            } catch (sharpError) {
+                console.error('Image processing error:', sharpError);
+                throw new Error('Failed to process image: Invalid or corrupted image file');
+            }
 
             // Clean up old files
             try {
@@ -56,6 +61,7 @@ class FileService {
                 }
             } catch (err) {
                 console.warn('Failed to cleanup old files:', err);
+                // Don't throw, just log the warning
             }
 
             // Clean up temp file
@@ -63,6 +69,7 @@ class FileService {
                 await fs.unlink(file.path);
             } catch (err) {
                 console.warn('Failed to cleanup temp file:', err);
+                // Don't throw, just log the warning
             }
 
             // Return full URL instead of relative path
@@ -105,6 +112,22 @@ class FileService {
             console.error('Error deleting set files:', err);
             throw new Error(`Failed to delete set files: ${err.message}`);
         }
+    }
+
+    convertPathToUrl(path) {
+        if (!path) return null;
+
+        // Handle Cloudinary URLs
+        if (path.includes('cloudinary.com')) {
+            return path.replace('http://', 'https://');
+        }
+
+        // Handle local paths
+        if (path.startsWith('/')) {
+            return `${process.env.API_URL || ''}${path}`;
+        }
+
+        return path;
     }
 }
 

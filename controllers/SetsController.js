@@ -27,6 +27,16 @@ class SetsController extends ApiController {
                 }));
             }
 
+            // Add batch size limit
+            const MAX_BATCH_SIZE = 50;
+            if (ids.length > MAX_BATCH_SIZE) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: `Batch size too large. Maximum allowed: ${MAX_BATCH_SIZE}`
+                }));
+            }
+
+            console.log(`Processing batch request for type: ${type}, ids:`, ids);
+
             let results;
             switch (type) {
                 case 'views':
@@ -71,6 +81,8 @@ class SetsController extends ApiController {
                     }));
             }
 
+            console.log(`Batch results for ${type}:`, results);
+
             // Format results as a map of id -> count
             const formattedResults = ids.reduce((acc, id) => {
                 acc[id] = 0;
@@ -81,9 +93,16 @@ class SetsController extends ApiController {
                 formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
             });
 
+            console.log(`Formatted results for ${type}:`, formattedResults);
+
             res.json(formattedResults);
         } catch (err) {
-            console.error('SetsController.batchGet - Error:', err);
+            console.error('SetsController.batchGet - Error:', {
+                error: err,
+                type: req.params.type,
+                ids: req.query.ids,
+                stack: err.stack
+            });
             res.status(500).json(responseFormatter.formatError({
                 message: 'Failed to get batch data',
                 error: process.env.NODE_ENV === 'development' ? err.message : undefined
