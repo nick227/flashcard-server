@@ -3,8 +3,16 @@ const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 const app = express();
+
+// Add request ID middleware
+app.use((req, res, next) => {
+    req.id = req.headers['x-request-id'] || uuidv4();
+    res.setHeader('X-Request-ID', req.id);
+    next();
+});
 
 // Enable gzip compression for all responses
 app.use(compression());
@@ -101,6 +109,20 @@ app.use((req, res, next) => {
     if (req.path.endsWith('.ts') || req.path.endsWith('.tsx')) {
         res.type('application/javascript');
         res.set('Content-Type', 'application/javascript');
+    }
+    // Handle other specific file types
+    else if (req.path.endsWith('.js')) {
+        res.type('application/javascript');
+        res.set('Content-Type', 'application/javascript');
+    } else if (req.path.endsWith('.css')) {
+        res.type('text/css');
+        res.set('Content-Type', 'text/css');
+    } else if (req.path.endsWith('.json')) {
+        res.type('application/json');
+        res.set('Content-Type', 'application/json');
+    } else if (req.path.endsWith('.html')) {
+        res.type('text/html');
+        res.set('Content-Type', 'text/html');
     }
     // Add security headers
     res.set({

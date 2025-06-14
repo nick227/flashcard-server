@@ -17,11 +17,20 @@ class SetsController extends ApiController {
 
     // Override batchGet to add logging
     async batchGet(req, res) {
+        const requestId = req.headers['x-request-id'] || 'unknown';
+        console.log(`[${requestId}] Starting batch request:`, {
+            type: req.params.type,
+            ids: req.query.ids,
+            headers: req.headers,
+            timestamp: new Date().toISOString()
+        });
+
         try {
             const type = req.params.type;
             const ids = req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)) : [];
 
             if (!ids.length) {
+                console.log(`[${requestId}] No IDs provided`);
                 return res.status(400).json(responseFormatter.formatError({
                     message: 'No IDs provided'
                 }));
@@ -30,58 +39,77 @@ class SetsController extends ApiController {
             // Add batch size limit
             const MAX_BATCH_SIZE = 50;
             if (ids.length > MAX_BATCH_SIZE) {
+                console.log(`[${requestId}] Batch size too large:`, ids.length);
                 return res.status(400).json(responseFormatter.formatError({
                     message: `Batch size too large. Maximum allowed: ${MAX_BATCH_SIZE}`
                 }));
             }
 
-            console.log(`Processing batch request for type: ${type}, ids:`, ids);
+            console.log(`[${requestId}] Processing batch request for type: ${type}, ids:`, ids);
 
             let results;
-            switch (type) {
-                case 'views':
-                    results = await this.model.sequelize.models.History.findAll({
-                        attributes: [
-                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                        ],
-                        where: {
-                            set_id: ids
-                        },
-                        group: ['set_id'],
-                        raw: true
-                    });
-                    break;
-                case 'likes':
-                    results = await this.model.sequelize.models.UserLike.findAll({
-                        attributes: [
-                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                        ],
-                        where: {
-                            set_id: ids
-                        },
-                        group: ['set_id'],
-                        raw: true
-                    });
-                    break;
-                case 'cards':
-                    results = await this.model.sequelize.models.Card.findAll({
-                        attributes: [
-                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                        ],
-                        where: {
-                            set_id: ids
-                        },
-                        group: ['set_id'],
-                        raw: true
-                    });
-                    break;
-                default:
-                    return res.status(400).json(responseFormatter.formatError({
-                        message: 'Invalid batch type'
-                    }));
+            try {
+                switch (type) {
+                    case 'views':
+                        console.log(`[${requestId}] Querying History table for views`);
+                        results = await this.model.sequelize.models.History.findAll({
+                            attributes: [
+                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                            ],
+                            where: {
+                                set_id: ids
+                            },
+                            group: ['set_id'],
+                            raw: true
+                        });
+                        console.log(`[${requestId}] History query results:`, results);
+                        break;
+                    case 'likes':
+                        console.log(`[${requestId}] Querying UserLike table for likes`);
+                        results = await this.model.sequelize.models.UserLike.findAll({
+                            attributes: [
+                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                            ],
+                            where: {
+                                set_id: ids
+                            },
+                            group: ['set_id'],
+                            raw: true
+                        });
+                        console.log(`[${requestId}] UserLike query results:`, results);
+                        break;
+                    case 'cards':
+                        console.log(`[${requestId}] Querying Card table for cards`);
+                        results = await this.model.sequelize.models.Card.findAll({
+                            attributes: [
+                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                            ],
+                            where: {
+                                set_id: ids
+                            },
+                            group: ['set_id'],
+                            raw: true
+                        });
+                        console.log(`[${requestId}] Card query results:`, results);
+                        break;
+                    default:
+                        console.log(`[${requestId}] Invalid batch type:`, type);
+                        return res.status(400).json(responseFormatter.formatError({
+                            message: 'Invalid batch type'
+                        }));
+                }
+            } catch (dbError) {
+                console.error(`[${requestId}] Database error in batchGet:`, {
+                    error: dbError,
+                    type,
+                    ids,
+                    stack: dbError.stack,
+                    sql: dbError.sql,
+                    sqlMessage: dbError.sqlMessage,
+                    sqlState: dbError.sqlState
+                });
+                throw new Error(`Database error: ${dbError.message}`);
             }
-
-            console.log(`Batch results for ${type}:`, results);
 
             // Format results as a map of id -> count
             const formattedResults = ids.reduce((acc, id) => {
@@ -90,18 +118,25 @@ class SetsController extends ApiController {
             }, {});
 
             results.forEach(result => {
-                formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
+                if (result && result.set_id) {
+                    formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
+                }
             });
 
-            console.log(`Formatted results for ${type}:`, formattedResults);
+            console.log(`[${requestId}] Formatted results:`, formattedResults);
 
             res.json(formattedResults);
         } catch (err) {
-            console.error('SetsController.batchGet - Error:', {
+            console.error(`[${requestId}] SetsController.batchGet - Error:`, {
                 error: err,
                 type: req.params.type,
                 ids: req.query.ids,
-                stack: err.stack
+                stack: err.stack,
+                requestId,
+                timestamp: new Date().toISOString(),
+                headers: req.headers,
+                url: req.url,
+                method: req.method
             });
             res.status(500).json(responseFormatter.formatError({
                 message: 'Failed to get batch data',

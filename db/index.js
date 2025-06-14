@@ -18,13 +18,23 @@ const sequelize = new Sequelize(
         host: config.host,
         port: config.port,
         dialect: config.dialect,
-        logging: false,
+        logging: (msg) => {
+            // Only log SQL queries in development
+            if (process.env.NODE_ENV === 'development') {
+                console.log(msg);
+            }
+        },
         dialectOptions: config.dialectOptions,
+        // Add connection retry logic
+        retry: {
+            max: 3,
+            match: [/Deadlock/i, /Connection lost/i, /ETIMEDOUT/i, /ECONNRESET/i, /ECONNREFUSED/i]
+        },
         pool: {
-            max: 10, // Maximum number of connections in pool
-            min: 0, // Minimum number of connections in pool
-            acquire: 30000, // Maximum time (ms) to try getting a connection before throwing error
-            idle: 10000 // Maximum time (ms) a connection can be idle before being released
+            max: process.env.NODE_ENV === 'production' ? 10 : 5,
+            min: 0,
+            acquire: 60000,
+            idle: 10000
         }
     }
 );
@@ -118,21 +128,35 @@ sequelize.authenticate()
         });
     })
     .catch(err => {
-        console.error('Unable to connect to the database:', err);
-        console.error('Connection attempt details:', {
-            host: config.host,
-            port: config.port,
-            database: config.database,
-            error: err.message
+        console.error('Unable to connect to the database:', {
+            error: err,
+            message: err.message,
+            stack: err.stack,
+            config: {
+                ...config,
+                password: '***' // Hide password in logs
+            }
         });
+        // Don't exit in production, let the app handle reconnection
+        if (process.env.NODE_ENV !== 'production') {
+            process.exit(1);
+        }
     });
+
+// Handle connection errors through process events
+process.on('unhandledRejection', (err) => {
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+        console.error('Database connection error:', {
+            error: err,
+            message: err.message,
+            stack: err.stack,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
 
 module.exports = {
     sequelize,
     Sequelize,
-    User,
-    OpenAIRequest,
-    GenerationSession,
-    NewsletterSubscriber,
     ...models
 };

@@ -10,11 +10,19 @@ const config = {
     port: isProduction ? (process.env.MYSQL_PORT || 3306) : 3306,
     dialect: 'mysql',
     pool: {
-        max: 5,
+        max: isProduction ? 10 : 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
-    }
+        idle: 10000,
+        connectTimeout: 60000,
+        retry: {
+            max: 3,
+            match: [/Deadlock/i, /Connection lost/i]
+        }
+    },
+    logging: isProduction ? console.error : console.log,
+    queryTimeout: 30000,
+    statementTimeout: 30000
 };
 
 // Only add SSL in production
@@ -23,7 +31,9 @@ if (isProduction) {
         ssl: {
             require: true,
             rejectUnauthorized: false
-        }
+        },
+        connectTimeout: 60000,
+        statementTimeout: 30000
     };
 }
 

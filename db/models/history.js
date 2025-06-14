@@ -11,11 +11,21 @@ module.exports = (sequelize) => {
         },
         set_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: false,
+            references: {
+                model: 'sets',
+                key: 'id'
+            },
+            onDelete: 'CASCADE'
         },
         user_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: false,
+            references: {
+                model: 'users',
+                key: 'id'
+            },
+            onDelete: 'CASCADE'
         },
         num_cards_viewed: {
             type: DataTypes.INTEGER,
@@ -53,15 +63,34 @@ module.exports = (sequelize) => {
         },
         indexes: [{
                 unique: true,
-                fields: ['user_id', 'set_id']
+                fields: ['user_id', 'set_id'],
+                name: 'user_set_unique'
             },
             {
-                fields: ['user_id']
+                fields: ['user_id'],
+                name: 'idx_history_user_id'
             },
             {
-                fields: ['set_id']
+                fields: ['set_id'],
+                name: 'idx_history_set_id'
+            },
+            {
+                fields: ['started_at'],
+                name: 'idx_history_started_at'
+            },
+            {
+                fields: ['completed'],
+                name: 'idx_history_completed'
             }
-        ]
+        ],
+        paranoid: true,
+        validate: {
+            validDates() {
+                if (this.completed_at && this.started_at && this.completed_at < this.started_at) {
+                    throw new Error('completed_at cannot be before started_at');
+                }
+            }
+        }
     });
 
     return History;
