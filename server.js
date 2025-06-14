@@ -115,6 +115,16 @@ app.use(cors({
     maxAge: 86400 // 24 hours
 }));
 
+// Add MIME type handling middleware
+app.use((req, res, next) => {
+    if (req.path.endsWith('.ts')) {
+        res.type('application/javascript');
+    } else if (req.path.endsWith('.tsx')) {
+        res.type('application/javascript');
+    }
+    next();
+});
+
 // Add request logging middleware with more details
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);

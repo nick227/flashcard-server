@@ -18,7 +18,70 @@ class SetsController extends ApiController {
     // Override batchGet to add logging
     async batchGet(req, res) {
         try {
-            await super.batchGet(req, res);
+            const type = req.params.type;
+            const ids = req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)) : [];
+
+            if (!ids.length) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'No IDs provided'
+                }));
+            }
+
+            let results;
+            switch (type) {
+                case 'views':
+                    results = await this.model.sequelize.models.History.findAll({
+                        attributes: [
+                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                        ],
+                        where: {
+                            set_id: ids
+                        },
+                        group: ['set_id'],
+                        raw: true
+                    });
+                    break;
+                case 'likes':
+                    results = await this.model.sequelize.models.UserLike.findAll({
+                        attributes: [
+                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                        ],
+                        where: {
+                            set_id: ids
+                        },
+                        group: ['set_id'],
+                        raw: true
+                    });
+                    break;
+                case 'cards':
+                    results = await this.model.sequelize.models.Card.findAll({
+                        attributes: [
+                            'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                        ],
+                        where: {
+                            set_id: ids
+                        },
+                        group: ['set_id'],
+                        raw: true
+                    });
+                    break;
+                default:
+                    return res.status(400).json(responseFormatter.formatError({
+                        message: 'Invalid batch type'
+                    }));
+            }
+
+            // Format results as a map of id -> count
+            const formattedResults = ids.reduce((acc, id) => {
+                acc[id] = 0;
+                return acc;
+            }, {});
+
+            results.forEach(result => {
+                formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
+            });
+
+            res.json(formattedResults);
         } catch (err) {
             console.error('SetsController.batchGet - Error:', err);
             res.status(500).json(responseFormatter.formatError({
