@@ -605,7 +605,7 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting set with ID:', setId, 'User:', req.user ? req.user.id : 'No user');
+            console.log('Getting set with ID:', setId, 'User:', req.user ? req.user.id : 'Anonymous');
 
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
@@ -623,12 +623,12 @@ class SetsController extends ApiController {
                         model: this.model.sequelize.models.Card,
                         as: 'cards',
                         attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
-                        required: false // Make it a LEFT JOIN to get sets even without cards
+                        required: false
                     },
                     {
                         model: this.model.sequelize.models.Tag,
                         as: 'tags',
-                        through: { attributes: [] }, // Don't include the join table attributes
+                        through: { attributes: [] },
                         attributes: ['id', 'name']
                     }
                 ]
@@ -641,13 +641,14 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Found set:', {
-                id: set.id,
-                title: set.title,
-                educatorId: set.educator_id
-            });
+            // For anonymous users, only return public sets
+            if (!req.user && set.hidden) {
+                return res.status(403).json(responseFormatter.formatError({
+                    message: 'This set is not available for anonymous viewing'
+                }));
+            }
 
-            // Get the set with access check
+            // Get the set with access check (pass null for anonymous users)
             const result = await this.setService.getSet(setId, req.user ? req.user.id : null, set);
 
             // Transform the result to include tags
@@ -660,28 +661,17 @@ class SetsController extends ApiController {
                     name: set.educator.name,
                     image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
                 } : null,
-                tags: set.tags ? set.tags.map(tag => tag.name) : []
+                tags: set.tags ? set.tags.map(tag => tag.name) : [],
+                // Add isLiked field only for authenticated users
+                isLiked: req.user ? result.isLiked : false
             };
 
             return res.json(transformedResult);
         } catch (err) {
-            // Custom handling for hidden sets
-            if (err.name === 'SetAccessError' && err.details && err.details.code === 'SET_HIDDEN') {
-                return res.status(403).json({
-                    error: 'SET_HIDDEN',
-                    message: 'This set is hidden or unavailable.'
-                });
-            }
-            // Log stack only for unexpected errors
             console.error('SetsController.get - Error:', err);
             if (process.env.NODE_ENV === 'development') {
                 console.error('Error stack:', err.stack);
             }
-            console.error('Request details:', {
-                params: req.params,
-                user: req.user ? { id: req.user.id } : 'No user',
-                headers: req.headers
-            });
             return res.status(500).json(responseFormatter.formatError({
                 message: 'Failed to retrieve set',
                 error: process.env.NODE_ENV === 'development' ? err.message : undefined
