@@ -115,12 +115,13 @@ class HistoryController extends ApiController {
             // Convert request body to snake_case
             const updateData = camelToSnakeKeys(req.body);
 
-            // Find the history record
+            // Find the history record with raw: false to get a model instance
             const history = await this.model.findOne({
                 where: {
                     id,
                     user_id: userId
-                }
+                },
+                raw: false // Ensure we get a model instance
             });
 
             if (!history) {
@@ -135,17 +136,8 @@ class HistoryController extends ApiController {
                 updateData.completed_at = new Date();
             }
 
-            // Update the record using Sequelize's update method
-            const [updatedCount] = await this.model.update(updateData, {
-                where: {
-                    id,
-                    user_id: userId
-                }
-            });
-
-            if (updatedCount === 0) {
-                return res.status(404).json({ error: 'History not found or no changes made' });
-            }
+            // Update using the model instance to trigger validations
+            await history.update(updateData);
 
             // Fetch the updated record
             const updatedHistory = await this.model.findOne({
