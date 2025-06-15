@@ -108,7 +108,9 @@ class SetsController extends ApiController {
                     sqlMessage: dbError.sqlMessage,
                     sqlState: dbError.sqlState
                 });
-                throw new Error(`Database error: ${dbError.message}`);
+                return res.status(500).json(responseFormatter.formatError({
+                    message: 'Database error occurred while fetching batch data'
+                }));
             }
 
             // Format results as a map of id -> count

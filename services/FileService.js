@@ -117,17 +117,13 @@ class FileService {
     convertPathToUrl(path) {
         if (!path) return null;
 
-        // Handle Cloudinary URLs
+        // If it's a Cloudinary URL, ensure it uses HTTPS
         if (path.includes('cloudinary.com')) {
             return path.replace('http://', 'https://');
         }
 
-        // Handle local paths
-        if (path.startsWith('/')) {
-            return `${process.env.API_URL || ''}${path}`;
-        }
-
-        return path;
+        // For local files, use the configured base URL
+        return `${process.env.BASE_URL || ''}${path}`;
     }
 }
 
