@@ -1270,7 +1270,7 @@ class SetsController extends ApiController {
             const relatedSets = await this.model.findAll({
                 where: {
                     id: {
-                        [this.model.sequelize.Op.ne]: setId
+                        [Op.ne]: setId
                     }, // Exclude current set
                     hidden: false, // Only show public sets
                     category_id: currentCategoryId // Same category

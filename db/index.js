@@ -21,7 +21,7 @@ const sequelize = new Sequelize(
         logging: (msg) => {
             // Only log SQL queries in development
             if (process.env.NODE_ENV === 'development') {
-                console.log(msg);
+                //console.log(msg);
             }
         },
         dialectOptions: config.dialectOptions,
@@ -125,11 +125,6 @@ Object.values(models).forEach(model => {
 sequelize.authenticate()
     .then(() => {
         console.log('Database connection established successfully.');
-        console.log('Connection details:', {
-            host: config.host,
-            port: config.port,
-            database: config.database
-        });
     })
     .catch(err => {
         console.error('Unable to connect to the database:', {
