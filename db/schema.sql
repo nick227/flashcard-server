@@ -188,6 +188,38 @@ CREATE TABLE newsletter_subscribers (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- STOCK IMAGES
+CREATE TABLE IF NOT EXISTS `stock_image` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `cloudinary_url` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `original_prompt` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `session_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `filename` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `public_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `upload_time` int DEFAULT NULL,
+  `file_size` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_session_id` (`session_id`),
+  KEY `idx_created_at` (`created_at`)
+);
 
-
-
+-- CLOUDINARY ASSETS
+CREATE TABLE IF NOT EXISTS `cloudinary` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(191) NOT NULL,
+  `secure_url` text NOT NULL,
+  `resource_type` varchar(50) NOT NULL DEFAULT 'image',
+  `format` varchar(20) DEFAULT NULL,
+  `width` int DEFAULT NULL,
+  `height` int DEFAULT NULL,
+  `bytes` int DEFAULT NULL,
+  `folder` varchar(100) DEFAULT NULL,
+  `original_filename` varchar(191) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_cloudinary_public_id` (`public_id`),
+  KEY `idx_cloudinary_folder` (`folder`),
+  KEY `idx_cloudinary_resource_type` (`resource_type`)
+);

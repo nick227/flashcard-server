@@ -1,4 +1,3 @@
-const fileService = require('./FileService');
 const SetValidationService = require('./SetValidationService');
 const SetQueryBuilder = require('./SetQueryBuilder');
 const SetTransformer = require('./SetTransformer');
@@ -40,105 +39,158 @@ class SetService {
         this.accessService = new SetAccessService(models);
     }
 
-    async createSet(setData, cards, tags, file) {
+    async createSet(setData, cards, tags) {
+        console.log('[SetService] Starting set creation:', {
+            setDataKeys: Object.keys(setData || {}),
+            cardCount: cards ? cards.length : 0,
+            tagCount: tags ? tags.length : 0
+        });
+
         // Validate data
         const errors = SetValidationService.validateSetData(setData);
         if (errors.length > 0) {
+            console.error('[SetService] Set validation failed:', errors);
             throw new SetValidationError(errors.join(', '));
         }
-        try {
-            SetValidationService.validateCards(cards);
-        } catch (error) {
-            throw new SetValidationError(error.message);
+
+        // Normalize category ID
+        if (setData.categoryId && !setData.category_id) {
+            setData.category_id = setData.categoryId;
         }
+
+        // Validate cards if provided
+        if (cards && cards.length > 0) {
+            try {
+                SetValidationService.validateCards(cards);
+                console.log('[SetService] Card validation passed');
+            } catch (error) {
+                console.error('[SetService] Card validation failed:', error.message);
+                throw new SetValidationError(error.message);
+            }
+        }
+
+        // Validate tags if provided
         if (tags) {
             try {
                 SetValidationService.validateTags(tags);
+                console.log('[SetService] Tag validation passed');
             } catch (error) {
+                console.error('[SetService] Tag validation failed:', error.message);
                 throw new SetValidationError(error.message);
             }
         }
 
         const transaction = await this.Set.sequelize.transaction();
         try {
+            console.log('[SetService] Creating set in database');
             // Create the set
             const set = await this.Set.create(setData, { transaction });
+            console.log('[SetService] Set created:', { setId: set.id });
 
             // Handle tags
             if (tags) {
-                await this.handleTags(set, tags, transaction);
-            }
-
-            // Handle file upload
-            if (file) {
-                await this.handleFileUpload(set, file);
+                console.log('[SetService] Processing tags:', tags);
+                await this.handleTags(set, tags);
             }
 
             // Create cards
             if (cards.length > 0) {
+                console.log('[SetService] Creating cards:', { count: cards.length });
                 await this.createCards(set, cards, transaction);
             }
 
             await transaction.commit();
+            console.log('[SetService] Transaction committed successfully');
+
             const completeSet = await this.getCompleteSet(set.id);
+            console.log('[SetService] Set creation completed:', { setId: set.id });
             return SetTransformer.transformSet(completeSet);
         } catch (error) {
+            console.error('[SetService] Error during set creation:', {
+                error: error.message,
+                stack: error.stack
+            });
             await transaction.rollback();
             throw error;
         }
     }
 
-    async updateSet(setId, setData, cards, tags, file) {
+    async updateSet(setId, setData, cards, tags) {
+        console.log('[SetService] Starting simplified set update:', {
+            setId,
+            setDataKeys: Object.keys(setData || {}),
+            cardCount: cards ? cards.length : 0
+        });
+
         // Validate data
-        const errors = SetValidationService.validateSetData(setData, true);
+        const errors = SetValidationService.validateSetData(setData);
         if (errors.length > 0) {
+            console.error('[SetService] Set validation failed:', errors);
             throw new SetValidationError(errors.join(', '));
         }
-        if (cards.length > 0) {
-            try {
-                SetValidationService.validateCards(cards);
-            } catch (error) {
-                throw new SetValidationError(error.message);
-            }
-        }
-        if (tags) {
-            try {
-                SetValidationService.validateTags(tags);
-            } catch (error) {
-                throw new SetValidationError(error.message);
-            }
-        }
 
-        const transaction = await this.Set.sequelize.transaction();
         try {
-            const set = await this.Set.findByPk(setId, { transaction });
+            // Get the existing set
+            const set = await this.Set.findByPk(setId);
             if (!set) {
                 throw new SetNotFoundError();
             }
 
-            // Update set data
-            await set.update(setData, { transaction });
+            console.log('[SetService] Found existing set:', {
+                setId: set.id,
+                currentTitle: set.title,
+                currentDescription: set.description
+            });
 
-            // Handle tags
+            // Simple direct update of set fields
+            console.log('[SetService] Updating set fields:', setData);
+            await set.update(setData);
+            console.log('[SetService] Set fields updated successfully');
+
+            // Handle tags if provided
             if (tags) {
-                await this.handleTags(set, tags, transaction);
+                console.log('[SetService] Processing tags:', tags);
+                await this.handleTags(set, tags);
             }
 
-            // Handle file upload
-            if (file) {
-                await this.handleFileUpload(set, file);
-            }
-
-            // Update cards
+            // Simple card replacement - delete all existing, create new ones
             if (cards.length > 0) {
-                await this.updateCards(set, cards, transaction);
+                console.log('[SetService] Replacing cards:', { count: cards.length });
+
+                // Delete existing cards
+                await this.Card.destroy({ where: { set_id: setId } });
+                console.log('[SetService] Existing cards deleted');
+
+                // Create new cards
+                const cardData = cards.map(card => ({
+                    set_id: setId,
+                    front: card.front.text || '',
+                    back: card.back.text || '',
+                    front_image: card.front.imageUrl || null,
+                    back_image: card.back.imageUrl || null,
+                    hint: card.hint || null,
+                    layout_front: card.front.layout || 'default',
+                    layout_back: card.back.layout || 'default'
+                }));
+
+                await this.Card.bulkCreate(cardData);
+                console.log('[SetService] New cards created successfully');
             }
 
-            await transaction.commit();
+            // Get the updated set with all relations
             const completeSet = await this.getCompleteSet(setId);
+            console.log('[SetService] Set update completed:', {
+                setId: completeSet.id,
+                finalTitle: completeSet.title,
+                finalCardCount: completeSet.cards ? completeSet.cards.length : 0
+            });
+
             return SetTransformer.transformSet(completeSet);
         } catch (error) {
-            await transaction.rollback();
+            console.error('[SetService] Error during set update:', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -147,11 +199,6 @@ class SetService {
         const set = await this.Set.findByPk(setId);
         if (!set) {
             throw new SetNotFoundError();
-        }
-
-        // Delete associated files
-        if (set.thumbnail) {
-            await fileService.deleteSetFiles(setId, set.thumbnail);
         }
 
         // Delete the set (this will cascade delete cards)
@@ -222,60 +269,34 @@ class SetService {
 
         // Transform the cards to include image URLs
         if (set.cards) {
-            // Debug: Log the raw card data
-            console.log('Raw card data:', JSON.stringify(set.cards[0], null, 2));
-
-            // Debug: Log the card model attributes
-            console.log('Card model attributes:', set.cards[0] ? set.cards[0].dataValues : null);
-
-            // Debug: Log the card model instance
-            console.log('Card model instance:', set.cards[0] ? set.cards[0].constructor.name : null);
-
-            // Debug: Log the raw SQL query
-            const card = set.cards[0];
-            if (card) {
-                console.log('Card raw attributes:', card.get({ plain: true }));
-                console.log('Card toJSON:', card.toJSON());
-                console.log('Card front_image:', card.front_image);
-                console.log('Card back_image:', card.back_image);
-                console.log('Card layout_front:', card.layout_front);
-                console.log('Card layout_back:', card.layout_back);
-            }
-
-            console.log('Raw database values:', set.cards.map(card => {
-                const cardData = {
-                    id: card.id,
-                    front: card.front,
-                    front_image: card.front_image,
-                    back: card.back,
-                    back_image: card.back_image,
-                    layout_front: card.layout_front,
-                    layout_back: card.layout_back,
-                    allProps: Object.keys(card),
-                    rawData: card.get({ plain: true })
-                };
-                return cardData;
+            set.cards = set.cards.map(card => ({
+                id: card.id, // Keep as number to match frontend Card type
+                title: card.title || '',
+                description: card.description || '',
+                category: card.category || '',
+                tags: card.tags || [],
+                front: {
+                    text: card.front || '',
+                    imageUrl: card.front_image || null,
+                    layout: card.layout_front || 'default'
+                },
+                back: {
+                    text: card.back || '',
+                    imageUrl: card.back_image || null,
+                    layout: card.layout_back || 'default'
+                },
+                hint: card.hint || null,
+                createdAt: card.createdAt || new Date(),
+                updatedAt: card.updatedAt || new Date(),
+                lastReviewedAt: card.lastReviewedAt || null,
+                reviewCount: card.reviewCount || 0,
+                difficulty: card.difficulty || 0,
+                nextReviewDate: card.nextReviewDate || null,
+                isArchived: card.isArchived || false,
+                isPublic: card.isPublic || false,
+                userId: card.userId || '',
+                deckId: card.deckId || ''
             }));
-
-            set.cards = set.cards.map(card => {
-                const transformedCard = {
-                    id: card.id,
-                    setId: card.set_id,
-                    front: {
-                        text: card.front || '',
-                        imageUrl: card.front_image || null
-                    },
-                    back: {
-                        text: card.back || '',
-                        imageUrl: card.back_image || null
-                    },
-                    hint: card.hint,
-                    layout_front: card.layout_front || 'default',
-                    layout_back: card.layout_back || 'default'
-                };
-                console.log('Transformed card:', transformedCard);
-                return transformedCard;
-            });
         }
 
         return SetTransformer.transformSet(set);
@@ -322,8 +343,12 @@ class SetService {
         });
     }
 
+    async getSetById(setId) {
+        return this.Set.findByPk(setId);
+    }
+
     // Private helper methods
-    async handleTags(set, tagNames, transaction) {
+    async handleTags(set, tagNames, transaction = null) {
         console.log('[SetService] Handling tags for set:', {
             setId: set.id,
             tagNames,
@@ -350,7 +375,7 @@ class SetService {
                 console.log('[SetService] Finding or creating tag:', trimmedName);
                 const [tag] = await this.Tag.findOrCreate({
                     where: { name: trimmedName },
-                    transaction
+                    ...(transaction && { transaction })
                 });
                 return tag;
             })
@@ -362,52 +387,49 @@ class SetService {
             tagIds: tags.map(t => t.id)
         });
 
-        await set.setTags(tags, { transaction });
-    }
-
-    async handleFileUpload(set, file) {
-
-        if (file && typeof file === 'object' && file.path) {
-            // This is a file upload
-            const fileInfo = await fileService.moveUploadedFile(file, set.id);
-            await set.update({ thumbnail: fileInfo.relativePath });
-        } else if (typeof file === 'string' && file.trim()) {
-            // This is a URL (from AI generation)
-            await set.update({ thumbnail: file });
-        } else {
-            throw new SetValidationError('Invalid thumbnail data');
-        }
-
-        // Verify the update
-        const updatedSet = await this.Set.findByPk(set.id);
+        await set.setTags(tags, {...(transaction && { transaction }) });
     }
 
     async createCards(set, cards, transaction) {
+        console.log('[SetService] Starting card creation:', {
+            setId: set.id,
+            cardCount: cards.length
+        });
+
         await Promise.all(
-            cards.map(card =>
-                this.Card.create({
+            cards.map(async(card, index) => {
+                console.log(`[SetService] Creating card ${index + 1}:`, {
+                    hasFrontImage: !!card.front.imageUrl,
+                    hasBackImage: !!card.back.imageUrl,
+                    frontImageType: typeof card.front.imageUrl,
+                    backImageType: typeof card.back.imageUrl
+                });
+
+                const cardData = {
                     front: card.front.text || '',
                     back: card.back.text || '',
                     front_image: card.front.imageUrl || null,
                     back_image: card.back.imageUrl || null,
                     hint: card.hint || null,
                     set_id: set.id,
-                    layout_front: card.layout_front || null,
-                    layout_back: card.layout_back || null
-                }, { transaction })
-            )
+                    layout_front: card.front.layout || 'default',
+                    layout_back: card.back.layout || 'default'
+                };
+
+                console.log(`[SetService] Card ${index + 1} data:`, {
+                    frontLength: cardData.front.length,
+                    backLength: cardData.back.length,
+                    frontImage: cardData.front_image,
+                    backImage: cardData.back_image
+                });
+
+                const createdCard = await this.Card.create(cardData, { transaction });
+                console.log(`[SetService] Card ${index + 1} created:`, { cardId: createdCard.id });
+                return createdCard;
+            })
         );
-    }
 
-    async updateCards(set, cards, transaction) {
-        // Delete existing cards
-        await this.Card.destroy({
-            where: { set_id: set.id },
-            transaction
-        });
-
-        // Create new cards
-        await this.createCards(set, cards, transaction);
+        console.log('[SetService] All cards created successfully');
     }
 
     async getCompleteSet(setId) {
@@ -443,24 +465,34 @@ class SetService {
 
         // Transform cards to include image URLs in the front/back objects
         if (set.cards) {
-            set.cards = set.cards.map(card => {
-                const transformedCard = {
-                    id: card.id,
-                    setId: card.set_id,
-                    front: {
-                        text: card.front || '',
-                        imageUrl: card.front_image
-                    },
-                    back: {
-                        text: card.back || '',
-                        imageUrl: card.back_image
-                    },
-                    hint: card.hint,
-                    layout_front: card.layout_front || 'default',
-                    layout_back: card.layout_back || 'default'
-                };
-                return transformedCard;
-            });
+            set.cards = set.cards.map(card => ({
+                id: card.id, // Keep as number to match frontend Card type
+                title: card.title || '',
+                description: card.description || '',
+                category: card.category || '',
+                tags: card.tags || [],
+                front: {
+                    text: card.front || '',
+                    imageUrl: card.front_image || null,
+                    layout: card.layout_front || 'default'
+                },
+                back: {
+                    text: card.back || '',
+                    imageUrl: card.back_image || null,
+                    layout: card.layout_back || 'default'
+                },
+                hint: card.hint || null,
+                createdAt: card.createdAt || new Date(),
+                updatedAt: card.updatedAt || new Date(),
+                lastReviewedAt: card.lastReviewedAt || null,
+                reviewCount: card.reviewCount || 0,
+                difficulty: card.difficulty || 0,
+                nextReviewDate: card.nextReviewDate || null,
+                isArchived: card.isArchived || false,
+                isPublic: card.isPublic || false,
+                userId: card.userId || '',
+                deckId: card.deckId || ''
+            }));
         }
 
         return set;

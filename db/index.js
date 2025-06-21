@@ -55,6 +55,8 @@ const History = require('./models/history')(sequelize);
 const OpenAIRequest = require('./models/openaiRequest')(sequelize);
 const GenerationSession = require('./models/GenerationSession')(sequelize);
 const NewsletterSubscriber = require('./models/NewsletterSubscriber')(sequelize);
+const StockImage = require('./models/stockImage')(sequelize);
+const Cloudinary = require('./models/cloudinary')(sequelize);
 
 // Create models object for associations
 const models = {
@@ -72,7 +74,9 @@ const models = {
     History,
     OpenAIRequest,
     GenerationSession,
-    NewsletterSubscriber
+    NewsletterSubscriber,
+    StockImage,
+    Cloudinary
 };
 
 // Set up associations

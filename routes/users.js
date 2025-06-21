@@ -32,6 +32,13 @@ router.get('/name-exists', (req, res) => usersController.nameExists(req, res));
 // #swagger.responses[200] = { description: 'Count of users', schema: { type: 'integer' } }
 router.get('/count', (req, res) => usersController.count(req, res));
 
+// GET /users/newest
+// #swagger.tags = ['Users']
+// #swagger.description = 'Get the newest registered user'
+// #swagger.responses[200] = { description: 'Newest user details', schema: { $ref: '#/definitions/User' } }
+// #swagger.responses[404] = { description: 'No users found' }
+router.get('/newest', (req, res) => usersController.newestUser(req, res));
+
 // GET /users
 // #swagger.tags = ['Users']
 // #swagger.description = 'Get all users (admin only)'

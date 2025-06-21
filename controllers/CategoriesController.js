@@ -1,6 +1,7 @@
 const ApiController = require('./ApiController');
 const { Op } = require('sequelize');
 const { Set } = require('../db'); // Import from db/index.js where models are initialized
+const responseFormatter = require('../services/ResponseFormatter');
 
 class CategoriesController extends ApiController {
     constructor() {
@@ -117,6 +118,108 @@ class CategoriesController extends ApiController {
             res.json({ count });
         } catch (err) {
             res.status(500).json({ error: err.message });
+        }
+    }
+
+    async getRandomWithSets(req, res) {
+        try {
+            const limit = parseInt(req.query.limit) || 4; // Number of categories
+            const setsPerCategory = parseInt(req.query.setsPerCategory) || 5; // Sets per category
+
+            // Validate parameters
+            if (limit < 1 || limit > 20) {
+                return res.status(400).json({
+                    error: 'Limit must be between 1 and 20'
+                });
+            }
+
+            if (setsPerCategory < 1 || setsPerCategory > 20) {
+                return res.status(400).json({
+                    error: 'Sets per category must be between 1 and 20'
+                });
+            }
+
+            // First, get all categories that have at least one non-hidden set
+            const categoriesWithSets = await this.model.scope(null).findAll({
+                include: [{
+                    model: Set,
+                    required: true,
+                    attributes: [], // Don't include set data in the result
+                    where: {
+                        hidden: false // Only include non-hidden sets
+                    }
+                }],
+                attributes: [
+                    'id',
+                    'name'
+                ],
+                group: ['Category.id', 'Category.name'],
+                raw: true
+            });
+
+            // If no categories found, return empty array
+            if (!categoriesWithSets || categoriesWithSets.length === 0) {
+                return res.json([]);
+            }
+
+            // Shuffle the categories and take the requested limit
+            const shuffledCategories = categoriesWithSets
+                .sort(() => Math.random() - 0.5)
+                .slice(0, limit);
+
+            // For each selected category, get random sets
+            const result = await Promise.all(
+                shuffledCategories.map(async(category) => {
+                    const sets = await Set.findAll({
+                        where: {
+                            category_id: category.id,
+                            hidden: false
+                        },
+                        include: [{
+                            model: this.model.sequelize.models.User,
+                            as: 'educator',
+                            attributes: ['id', 'name', 'image']
+                        }],
+                        attributes: [
+                            'id',
+                            'title',
+                            'description',
+                            'thumbnail',
+                            'price',
+                            'is_subscriber_only'
+                        ],
+                        order: this.model.sequelize.random(), // Random order
+                        limit: setsPerCategory,
+                        raw: false
+                    });
+
+                    return {
+                        id: category.id,
+                        name: category.name,
+                        sets: sets.map(set => ({
+                            id: set.id,
+                            title: set.title,
+                            description: set.description,
+                            thumbnail: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : null,
+                            price: parseFloat(set.price) || 0,
+                            isSubscriberOnly: Boolean(set.is_subscriber_only),
+                            educator: set.educator ? {
+                                id: set.educator.id,
+                                name: set.educator.name,
+                                image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
+                            } : null
+                        }))
+                    };
+                })
+            );
+
+            res.json(result);
+        } catch (error) {
+            console.error('Error fetching random categories with sets:', error);
+            res.status(500).json({
+                error: 'Failed to fetch random categories with sets',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
         }
     }
 }

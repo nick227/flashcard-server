@@ -6,9 +6,25 @@ const requireOwnership = require('../middleware/requireOwnership');
 const uploadMiddleware = require('../middleware/upload');
 const { cache } = require('../services/cache/ApicacheWrapper');
 const { setHttpCacheHeaders, CACHE_DURATIONS } = require('../services/cache/httpCacheHeaders');
+const rateLimit = require('express-rate-limit');
 
 // Create a new instance of SetsController with the required model name
 const setsController = new SetsController('Set');
+
+// Image upload rate limiter - more restrictive than general API
+const imageUploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 30, // 30 image upload requests per 15 minutes
+    message: {
+        error: 'Image upload rate limit exceeded',
+        message: 'Too many image uploads. Please wait before uploading more images.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        return req.user ? `user_${req.user.id}` : req.ip;
+    }
+});
 
 // Add route logging middleware
 router.use((req, res, next) => {
@@ -76,21 +92,58 @@ router.get('/:id/cards',
     setsController.getCardsCount.bind(setsController)
 );
 
+router.get('/:id/related',
+    cache('10 minutes'),
+    (req, res, next) => {
+        setHttpCacheHeaders(res, CACHE_DURATIONS.MEDIUM, {
+            staleWhileRevalidate: true
+        });
+        next();
+    },
+    setsController.getRelatedSets.bind(setsController)
+);
+
 // Protected routes
 router.get('/:id/likes/user', jwtAuth, setsController.getUserLikeStatus.bind(setsController));
 
 router.post('/',
     jwtAuth,
-    uploadMiddleware.upload('thumbnail'),
+    (req, res, next) => {
+        console.log('[Sets Routes] POST /sets - Applying image upload limiter');
+        next();
+    },
+    imageUploadLimiter,
+    (req, res, next) => {
+        console.log('[Sets Routes] POST /sets - Applying upload middleware');
+        next();
+    },
+    uploadMiddleware.uploadMultiple(),
     uploadMiddleware.handleMulterError,
+    (req, res, next) => {
+        console.log('[Sets Routes] POST /sets - Upload middleware completed, calling controller');
+        next();
+    },
     setsController.create.bind(setsController)
 );
 
 router.patch('/:id',
     jwtAuth,
     requireOwnership('id', 'set'),
-    uploadMiddleware.upload('image'),
+    (req, res, next) => {
+        console.log('[Sets Routes] PATCH /sets/:id - Applying image upload limiter');
+        next();
+    },
+    imageUploadLimiter,
+    (req, res, next) => {
+        console.log('[Sets Routes] PATCH /sets/:id - Applying upload middleware');
+        next();
+    },
+    uploadMiddleware.uploadMultiple(),
     uploadMiddleware.handleMulterError,
+    (req, res, next) => {
+        console.log('[Sets Routes] PATCH /sets/:id - Upload middleware completed, calling controller');
+        next();
+    },
     setsController.update.bind(setsController)
 );
 

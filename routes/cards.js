@@ -1,6 +1,8 @@
 const express = require('express');
 const CardsController = require('../controllers/CardsController');
 const jwtAuth = require('../middleware/jwtAuth');
+const { upload } = require('../middleware/upload');
+const requireAuth = require('../middleware/requireAuth');
 
 const cardsController = new CardsController();
 const router = express.Router();
@@ -84,5 +86,27 @@ router.get('/set/:setId', cardsController.list.bind(cardsController));
 // #swagger.responses[403] = { description: 'Forbidden' }
 // #swagger.responses[404] = { description: 'Set not found' }
 router.post('/set/:setId', jwtAuth, cardsController.create.bind(cardsController));
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
+
+// Upload image for a specific card side
+// POST /cards/:cardId/:side/image
+router.post('/:cardId/:side/image',
+    upload('image'), // 'image' is the field name for the file
+    cardsController.uploadImage.bind(cardsController)
+);
+
+// Remove image from a specific card side
+// DELETE /cards/:cardId/:side/image
+router.delete('/:cardId/:side/image',
+    cardsController.removeImage.bind(cardsController)
+);
+
+// Get card by ID
+// GET /cards/:cardId
+router.get('/:cardId',
+    cardsController.get.bind(cardsController)
+);
 
 module.exports = router;

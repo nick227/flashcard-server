@@ -1,7 +1,6 @@
 const ApiController = require('./ApiController')
 const db = require('../db');
 const bcrypt = require('bcrypt');
-const fileService = require('../services/FileService');
 const responseFormatter = require('../services/ResponseFormatter');
 const path = require('path');
 const fs = require('fs');
@@ -55,7 +54,11 @@ class UsersController extends ApiController {
         try {
             const whereClause = {};
             if (req.query.name) {
-                whereClause.name = req.query.name;
+                // Use case-insensitive search like nameExists method
+                whereClause.name = db.sequelize.where(
+                    db.sequelize.fn('LOWER', db.sequelize.col('name')),
+                    db.sequelize.fn('LOWER', req.query.name.trim())
+                );
             }
 
             const users = await db.User.findAll({
@@ -211,10 +214,46 @@ class UsersController extends ApiController {
 
     async count(req, res) {
         try {
-            const count = await this.model.count();
+            const count = await db.User.count();
             res.json({ count });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            console.error('Error counting users:', err);
+            res.status(500).json({ message: 'Failed to count users' });
+        }
+    }
+
+    async newestUser(req, res) {
+        try {
+            const newestUser = await db.User.findOne({
+                attributes: ['id', 'name', 'image', 'bio', 'created_at'],
+                include: [{
+                    model: db.UserRole,
+                    as: 'UserRole',
+                    attributes: ['name']
+                }],
+                order: [
+                    ['created_at', 'DESC']
+                ]
+            });
+
+            if (!newestUser) {
+                return res.status(404).json({ message: 'No users found' });
+            }
+
+            // Format the response
+            const formattedUser = {
+                id: newestUser.id,
+                name: newestUser.name,
+                image: newestUser.image,
+                bio: newestUser.bio || null,
+                role: newestUser.UserRole ? newestUser.UserRole.name : null,
+                created_at: newestUser.created_at
+            };
+
+            res.json(formattedUser);
+        } catch (err) {
+            console.error('Error fetching newest user:', err);
+            res.status(500).json({ message: 'Failed to fetch newest user' });
         }
     }
 }

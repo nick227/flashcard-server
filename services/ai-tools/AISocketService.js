@@ -256,10 +256,26 @@ class AISocketService {
                 const { side, title, description, category, otherSideContent } = data
                 const userId = socket.user.id
 
-                // Validate request
-                if (!side || !title || !description) {
-                    throw new Error('Missing required parameters')
+                // Validate request with better error messages
+                if (!side || !['front', 'back'].includes(side)) {
+                    throw new Error('Invalid side parameter. Must be "front" or "back"')
                 }
+
+                if (!title || !title.trim()) {
+                    throw new Error('Title is required')
+                }
+
+                if (!description || !description.trim()) {
+                    throw new Error('Description is required')
+                }
+
+                console.log('Single card face generation request:', {
+                    side,
+                    title: title.substring(0, 50) + '...',
+                    description: description.substring(0, 50) + '...',
+                    category: category || 'none',
+                    userId
+                })
 
                 // Create a minimal session for tracking
                 const session = await generationSessionService.createSession(
@@ -294,9 +310,16 @@ class AISocketService {
                     // Update session status
                     await this.updateSessionStatus(session.id, this.SESSION_STATUS.COMPLETED, 'Generation complete')
 
+                    console.log('Single card face generation completed:', {
+                        side,
+                        textLength: result.text ? result.text.length : 0,
+                        requestId: result.requestId
+                    })
+
                     // Return the result
                     if (callback) callback({ text: result.text })
                 } catch (error) {
+                    console.error('Single card face generation error:', error)
                     await this.handleGenerationError(socket, null, session.id, error)
                     if (callback) callback({ error: error.message })
                 }

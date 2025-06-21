@@ -23,6 +23,17 @@ router.get('/', cache('5 minutes'), (req, res, next) => {
     categoriesController.list(req, res, next);
 });
 
+// GET /categories/random-with-sets - cache for 10 minutes
+// #swagger.tags = ['Categories']
+// #swagger.description = 'Get random categories with their sets for landing page'
+// #swagger.parameters['limit'] = { in: 'query', description: 'Number of categories to return', required: false, type: 'integer', default: 4 }
+// #swagger.parameters['setsPerCategory'] = { in: 'query', description: 'Number of sets per category', required: false, type: 'integer', default: 5 }
+// #swagger.responses[200] = { description: 'Random categories with sets', schema: { type: 'array', items: { $ref: '#/definitions/CategoryWithSets' } } }
+router.get('/random-with-sets', cache('10 minutes'), (req, res, next) => {
+    setHttpCacheHeaders(res, 600); // 10 minutes
+    categoriesController.getRandomWithSets(req, res, next);
+});
+
 // GET /categories/:id
 // #swagger.tags = ['Categories']
 // #swagger.description = 'Get a specific category'

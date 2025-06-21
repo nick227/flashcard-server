@@ -7,12 +7,14 @@ const PaginationService = require('../services/PaginationService');
 const SearchService = require('../services/SearchService');
 const { Op } = require('sequelize');
 const toCamel = require('../utils/toCamel');
+const CloudinaryService = require('../services/CloudinaryService');
 
 class SetsController extends ApiController {
     constructor() {
         super('Set');
         this.setService = new SetService(this.model.sequelize.models);
         this.searchService = new SearchService(this.model);
+        this.responseFormatter = responseFormatter;
     }
 
     // Override batchGet to add logging
@@ -175,7 +177,7 @@ class SetsController extends ApiController {
         }
 
         const errors = [];
-        const validLayouts = ['default', 'two-row', 'two-column'];
+        const validLayouts = ['default', 'two-row', 'two-col'];
 
         cards.forEach((card, index) => {
             // Validate front
@@ -191,7 +193,7 @@ class SetsController extends ApiController {
                 if (card.front.imageUrl && typeof card.front.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Front imageUrl must be a string`);
                 }
-                if (card.layout_front && !validLayouts.includes(card.layout_front)) {
+                if (card.front.layout && !validLayouts.includes(card.front.layout)) {
                     errors.push(`Card ${index + 1}: Front layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
@@ -209,7 +211,7 @@ class SetsController extends ApiController {
                 if (card.back.imageUrl && typeof card.back.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Back imageUrl must be a string`);
                 }
-                if (card.layout_back && !validLayouts.includes(card.layout_back)) {
+                if (card.back.layout && !validLayouts.includes(card.back.layout)) {
                     errors.push(`Card ${index + 1}: Back layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
@@ -319,73 +321,193 @@ class SetsController extends ApiController {
     }
 
     async create(req, res) {
-        try {
-            // Validate required fields
-            if (!req.body.title || !req.body.description || !req.body.categoryId) {
-                return res.status(400).json({ message: 'Missing required fields' });
-            }
+        console.log('[SetsController] POST /sets - Starting set creation');
+        console.log('[SetsController] Request details:', {
+            userId: req.user ? req.user.id : null,
+            hasFiles: !!req.files,
+            fileCount: req.files ? Object.keys(req.files).length : 0,
+            bodyKeys: Object.keys(req.body || {}),
+            contentType: req.get('Content-Type')
+        });
 
-            // Parse request data
+        try {
+            // Assemble setData from individual request body fields
             const setData = {
                 title: req.body.title,
                 description: req.body.description,
-                category_id: req.body.categoryId,
-                price: req.body.price || '0',
-                is_subscriber_only: req.body.isSubscriberOnly === 'true',
+                categoryId: req.body.category_id,
+                price: req.body.price,
+                isPublic: req.body.isPublic === 'true',
+                isSubscriberOnly: req.body.isSubscriberOnly === 'true',
                 educator_id: req.user.id
             };
 
-            // Parse cards and tags
-            let cards = JSON.parse(req.body.cards || '[]');
-            let tags = req.body.tags ? JSON.parse(req.body.tags) : [];
+            console.log('[SetsController] Set data extracted from body:', {
+                title: setData.title,
+                description: setData.description,
+                categoryId: setData.categoryId,
+                price: setData.price,
+                isPublic: setData.isPublic,
+                educatorId: setData.educator_id
+            });
 
-            // Handle thumbnail (either file or URL)
-            const thumbnail = req.file || req.body.thumbnailUrl;
+            // Extract cards data
+            const cards = JSON.parse(req.body.cards || '[]');
+            console.log('[SetsController] Cards data extracted:', {
+                cardCount: cards.length,
+                cardsWithImages: cards.filter(card =>
+                    (card.front && card.front.imageUrl) ||
+                    (card.back && card.back.imageUrl)
+                ).length
+            });
 
-            if (!thumbnail) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: 'Thumbnail is required'
+            // Log image files if present
+            if (req.files) {
+                console.log('[SetsController] Processing image files:');
+                Object.entries(req.files).forEach(([fieldName, files]) => {
+                    console.log(`  Field "${fieldName}": ${files.length} files`);
+                    files.forEach((file, index) => {
+                        console.log(`    [${index}] ${file.originalname} (${file.size} bytes)`);
+                    });
+                });
+            }
+
+            // Extract tags
+            const tags = req.body.tags ? JSON.parse(req.body.tags) : null;
+            console.log('[SetsController] Tags extracted:', tags);
+
+            // Thumbnail Handling
+            const thumbnailFile = req.files && req.files.thumbnail ? req.files.thumbnail[0] : null;
+            if (thumbnailFile) {
+                console.log('[SetsController] Uploading thumbnail...');
+                const result = await CloudinaryService.uploadImage(thumbnailFile.buffer, {
+                    folder: 'thumbnails',
+                    transformation: [
+                        { width: 800, height: 600, crop: 'fill', gravity: 'center' },
+                        { quality: 'auto', fetch_format: 'auto' }
+                    ]
+                });
+                setData.thumbnail = result.secure_url;
+                console.log('[SetsController] Thumbnail uploaded:', result.secure_url);
+            } else if (req.body.thumbnailUrl) {
+                setData.thumbnail = req.body.thumbnailUrl;
+            }
+
+            // Process image files and update card data
+            if (req.files) {
+                console.log('[SetsController] Processing card image files...');
+                await this.processCardImages(cards, req.files);
+                console.log('[SetsController] Card image processing completed');
+            }
+
+            // Create the set
+            console.log('[SetsController] Calling SetService.createSet');
+            const result = await this.setService.createSet(setData, cards, tags);
+
+            console.log('[SetsController] Set created successfully:', {
+                setId: result.id,
+                cardCount: result.cards ? result.cards.length : 0
+            });
+
+            res.status(201).json(result);
+        } catch (error) {
+            console.error('[SetsController] Set creation failed:', {
+                error: error.message,
+                stack: error.stack,
+                userId: req.user ? req.user.id : null
+            });
+
+            if (error.name === 'SetValidationError') {
+                return res.status(400).json(this.responseFormatter.formatError({
+                    message: error.message
                 }));
             }
 
-            // Create set
-            const set = await this.setService.createSet(setData, cards, tags, thumbnail);
-            return res.json(set);
-        } catch (err) {
-            console.error('SetsController.create - Error:', err);
-            return this.handleError(err, res);
+            res.status(500).json(this.responseFormatter.formatError({
+                message: 'Failed to create set'
+            }));
         }
     }
 
     async update(req, res) {
         try {
-            const setData = SetTransformer.transformSetData(req.body);
+            const setId = parseInt(req.params.id, 10);
+            console.log('[SetsController] Starting set update for ID:', setId);
 
-            let cards = [];
-            try {
-                cards = JSON.parse(req.body.cards || '[]');
-            } catch (err) {
-                return res.status(400).json(responseFormatter.formatError({
-                    message: `Invalid cards data: ${err.message}`
-                }));
+            // Check if set exists and user has permission
+            const existingSet = await this.setService.getSetById(setId);
+            if (!existingSet) {
+                return res.status(404).json({ message: 'Set not found' });
+            }
+            if (existingSet.educator_id !== req.user.id) {
+                return res.status(403).json({ message: 'Not authorized to update this set' });
             }
 
-            let tags = [];
-            if (req.body.tags) {
-                try {
-                    tags = JSON.parse(req.body.tags);
-                } catch (err) {
-                    console.error('Error parsing tags:', err);
-                }
+            console.log('[SetsController] Set found and user authorized:', {
+                setId: existingSet.id,
+                currentTitle: existingSet.title,
+                currentDescription: existingSet.description
+            });
+
+            // Parse request data from FormData
+            const setData = {
+                title: req.body.title,
+                description: req.body.description,
+                category_id: req.body.category_id ? parseInt(req.body.category_id, 10) : undefined,
+                price: parseFloat(req.body.price || '0'),
+                is_subscriber_only: req.body.isSubscriberOnly === 'true',
+                hidden: req.body.isPublic !== 'true' // Inverted: isPublic=true means hidden=false
+            };
+            const cards = req.body.cards ? JSON.parse(req.body.cards) : [];
+            const tags = req.body.tags ? JSON.parse(req.body.tags) : [];
+
+            console.log('[SetsController] Parsed update data:', {
+                newTitle: setData.title,
+                newDescription: setData.description,
+                newCardCount: cards.length,
+                newTagCount: tags.length
+            });
+
+            // Handle thumbnail if provided
+            if (req.files && req.files.thumbnail) {
+                const thumbnailFile = req.files.thumbnail[0];
+                console.log('[SetsController] Uploading new thumbnail...');
+                const result = await CloudinaryService.uploadImage(thumbnailFile.buffer, {
+                    folder: 'thumbnails',
+                    transformation: [
+                        { width: 800, height: 600, crop: 'fill', gravity: 'center' },
+                        { quality: 'auto', fetch_format: 'auto' }
+                    ]
+                });
+                setData.thumbnail = result.secure_url;
+                console.log('[SetsController] New thumbnail uploaded:', result.secure_url);
+            } else if (req.body.thumbnailUrl) {
+                setData.thumbnail = req.body.thumbnailUrl;
             }
 
-            // Handle thumbnail (either file or URL)
-            const thumbnail = req.file || req.body.thumbnailUrl;
+            // Process card images if any
+            if (req.files) {
+                console.log('[SetsController] Processing card image files...');
+                await this.processCardImages(cards, req.files);
+            }
 
-            const set = await this.setService.updateSet(req.params.id, setData, cards, tags, thumbnail);
-            return res.json(set);
-        } catch (err) {
-            return this.handleError(err, res);
+            // Call the service to perform the update
+            console.log('[SetsController] Calling SetService.updateSet...');
+            const updatedSet = await this.setService.updateSet(setId, setData, cards, tags);
+            console.log('[SetsController] Set update completed successfully');
+
+            res.json(updatedSet);
+        } catch (error) {
+            console.error('[SetsController] Error updating set:', {
+                error: error.message,
+                stack: error.stack,
+                setId: req.params.id,
+                userId: req.user ? req.user.id : null
+            });
+            if (error.name === 'SetValidationError') {
+                return res.status(400).json(this.responseFormatter.formatError({ message: error.message }));
+            }
+            res.status(500).json(this.responseFormatter.formatError({ message: 'Error updating set' }));
         }
     }
 
@@ -920,6 +1042,294 @@ class SetsController extends ApiController {
             console.error('SetsController.addView - Error:', err);
             return res.status(500).json(responseFormatter.formatError({
                 message: 'Failed to record view',
+                error: process.env.NODE_ENV === 'development' ? err.message : undefined
+            }));
+        }
+    }
+
+    /**
+     * Process image files from FormData and upload to Cloudinary
+     * @param {Array} cards - Array of card data
+     * @param {Object} files - Files from FormData
+     * @returns {Array} Processed cards with Cloudinary URLs
+     */
+    async processCardImages(cards, files) {
+        console.log('[SetsController] Starting card image processing:', {
+            cardCount: cards.length,
+            fileFields: Object.keys(files)
+        });
+
+        const uploadPromises = [];
+
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i];
+            const frontImageKey = `card_${i}_front_image`;
+            const backImageKey = `card_${i}_back_image`;
+
+            console.log(`[SetsController] Processing card ${i}:`, {
+                frontImageKey,
+                backImageKey,
+                hasFrontImage: !!files[frontImageKey],
+                hasBackImage: !!files[backImageKey]
+            });
+
+            // Process front image
+            if (files[frontImageKey] && files[frontImageKey][0]) {
+                const frontFile = files[frontImageKey][0];
+                console.log(`[SetsController] Uploading front image for card ${i}:`, {
+                    filename: frontFile.originalname,
+                    size: frontFile.size,
+                    mimetype: frontFile.mimetype
+                });
+
+                const frontUploadPromise = CloudinaryService.uploadImage(frontFile.buffer, {
+                    folder: 'card-images',
+                    transformation: [
+                        { width: 800, height: 600, crop: 'fill', gravity: 'center' },
+                        { quality: 'auto', fetch_format: 'auto' }
+                    ]
+                }).then(result => {
+                    console.log(`[SetsController] Front image uploaded for card ${i}:`, {
+                        publicId: result.public_id,
+                        url: result.secure_url
+                    });
+                    return { cardIndex: i, side: 'front', result };
+                }).catch(error => {
+                    console.error(`[SetsController] Front image upload failed for card ${i}:`, error);
+                    throw error;
+                });
+
+                uploadPromises.push(frontUploadPromise);
+            }
+
+            // Process back image
+            if (files[backImageKey] && files[backImageKey][0]) {
+                const backFile = files[backImageKey][0];
+                console.log(`[SetsController] Uploading back image for card ${i}:`, {
+                    filename: backFile.originalname,
+                    size: backFile.size,
+                    mimetype: backFile.mimetype
+                });
+
+                const backUploadPromise = CloudinaryService.uploadImage(backFile.buffer, {
+                    folder: 'card-images',
+                    transformation: [
+                        { width: 800, height: 600, crop: 'fill', gravity: 'center' },
+                        { quality: 'auto', fetch_format: 'auto' }
+                    ]
+                }).then(result => {
+                    console.log(`[SetsController] Back image uploaded for card ${i}:`, {
+                        publicId: result.public_id,
+                        url: result.secure_url
+                    });
+                    return { cardIndex: i, side: 'back', result };
+                }).catch(error => {
+                    console.error(`[SetsController] Back image upload failed for card ${i}:`, error);
+                    throw error;
+                });
+
+                uploadPromises.push(backUploadPromise);
+            }
+        }
+
+        console.log(`[SetsController] Starting ${uploadPromises.length} image uploads...`);
+
+        try {
+            const results = await Promise.all(uploadPromises);
+            console.log('[SetsController] All image uploads completed successfully');
+
+            // Update card data with uploaded URLs
+            results.forEach(({ cardIndex, side, result }) => {
+                console.log(`[SetsController] Updating card ${cardIndex} ${side} with URL:`, result.secure_url);
+
+                if (!cards[cardIndex]) {
+                    cards[cardIndex] = { front: {}, back: {} };
+                }
+
+                if (side === 'front') {
+                    if (!cards[cardIndex].front) cards[cardIndex].front = {};
+                    cards[cardIndex].front.imageUrl = result.secure_url;
+                } else {
+                    if (!cards[cardIndex].back) cards[cardIndex].back = {};
+                    cards[cardIndex].back.imageUrl = result.secure_url;
+                }
+            });
+
+            console.log('[SetsController] Card image processing completed successfully');
+        } catch (error) {
+            console.error('[SetsController] Image upload processing failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Check user upload limits
+     * @param {number} userId - User ID
+     * @param {number} imageCount - Number of images being uploaded
+     * @returns {Object} { allowed: boolean, limit: number }
+     */
+    async checkUserUploadLimits(userId, imageCount) {
+        const DAILY_UPLOAD_LIMIT = 50; // 50 images per day per user
+
+        try {
+            // Get today's upload count for user by checking sets created today
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Count cards with images from sets created today by this user
+            const uploadCount = await this.model.sequelize.models.Card.count({
+                include: [{
+                    model: this.model.sequelize.models.Set,
+                    as: 'set',
+                    where: {
+                        educator_id: userId,
+                        created_at: {
+                            [this.model.sequelize.Op.gte]: today
+                        }
+                    },
+                    attributes: []
+                }],
+                // Only count cards that have images
+                where: {
+                    [this.model.sequelize.Op.or]: [{
+                            front_image: {
+                                [this.model.sequelize.Op.ne]: null
+                            }
+                        },
+                        {
+                            back_image: {
+                                [this.model.sequelize.Op.ne]: null
+                            }
+                        }
+                    ]
+                }
+            });
+
+            const allowed = (uploadCount + imageCount) <= DAILY_UPLOAD_LIMIT;
+
+            return {
+                allowed,
+                limit: DAILY_UPLOAD_LIMIT,
+                current: uploadCount,
+                requested: imageCount
+            };
+        } catch (error) {
+            console.error('Error checking user upload limits:', error);
+            // If we can't check limits, allow the upload but log it
+            return { allowed: true, limit: DAILY_UPLOAD_LIMIT, current: 0, requested: imageCount };
+        }
+    }
+
+    /**
+     * Get related sets based on category and tags
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     */
+    async getRelatedSets(req, res) {
+        try {
+            const setId = parseInt(req.params.id, 10);
+            if (!setId || isNaN(setId)) {
+                return res.status(400).json(responseFormatter.formatError({
+                    message: 'Invalid set ID'
+                }));
+            }
+
+            console.log('Getting related sets for set ID:', setId);
+
+            // Get the current set to find its category
+            const currentSet = await this.model.findByPk(setId, {
+                include: [{
+                    model: this.model.sequelize.models.Category,
+                    as: 'category',
+                    attributes: ['id', 'name']
+                }]
+            });
+
+            if (!currentSet) {
+                console.log('Set not found with ID:', setId);
+                return res.status(404).json(responseFormatter.formatError({
+                    message: 'Set not found'
+                }));
+            }
+
+            console.log('Current set found:', {
+                id: currentSet.id,
+                title: currentSet.title,
+                category_id: currentSet.category_id,
+                category: currentSet.category ? currentSet.category.name : 'No category'
+            });
+
+            const currentCategoryId = currentSet.category_id;
+
+            if (!currentCategoryId) {
+                console.log('No category_id found for set:', setId);
+                return res.json([]); // Return empty array if no category
+            }
+
+            // Find related sets based on category only (simplified for now)
+            const relatedSets = await this.model.findAll({
+                where: {
+                    id: {
+                        [this.model.sequelize.Op.ne]: setId
+                    }, // Exclude current set
+                    hidden: false, // Only show public sets
+                    category_id: currentCategoryId // Same category
+                },
+                include: [{
+                    model: this.model.sequelize.models.Category,
+                    as: 'category',
+                    attributes: ['id', 'name']
+                }, {
+                    model: this.model.sequelize.models.User,
+                    as: 'educator',
+                    attributes: ['id', 'name', 'image']
+                }],
+                order: [
+                    ['created_at', 'DESC']
+                ],
+                limit: 6 // Limit to 6 related sets
+            });
+
+            console.log('Found related sets:', relatedSets.length);
+
+            // Get card counts separately to avoid association issues
+            const setIds = relatedSets.map(set => set.id);
+            const cardCounts = await this.model.sequelize.models.Card.findAll({
+                attributes: [
+                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
+                ],
+                where: {
+                    set_id: setIds
+                },
+                group: ['set_id'],
+                raw: true
+            });
+
+            // Create a map of set_id to card count
+            const cardCountMap = {};
+            cardCounts.forEach(item => {
+                cardCountMap[item.set_id] = parseInt(item.count, 10);
+            });
+
+            // Transform the sets to include card count and format properly
+            const transformedSets = relatedSets.map(set => {
+                const setData = set.toJSON();
+                return {
+                    ...setData,
+                    cardCount: cardCountMap[set.id] || 0
+                };
+            });
+
+            console.log('Transformed sets:', transformedSets.length);
+            res.json(transformedSets);
+        } catch (err) {
+            console.error('SetsController.getRelatedSets - Error:', err);
+            console.error('Error stack:', err.stack);
+            console.error('Error SQL:', err.sql);
+            console.error('Error SQL Message:', err.sqlMessage);
+            console.error('Error SQL State:', err.sqlState);
+            res.status(500).json(responseFormatter.formatError({
+                message: 'Failed to get related sets',
                 error: process.env.NODE_ENV === 'development' ? err.message : undefined
             }));
         }

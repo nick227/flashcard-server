@@ -27,7 +27,6 @@ const session = require('express-session');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const fileService = require('./services/FileService');
 const AISocketService = require('./services/ai-tools/AISocketService');
 const usersRouter = require('./routes/users');
 const setsRouter = require('./routes/sets');
@@ -43,10 +42,10 @@ const webhookRouter = require('./routes/webhook');
 const salesRouter = require('./routes/sales');
 const historyRouter = require('./routes/history');
 const aiRouter = require('./routes/ai.routes');
-const thumbnailRouter = require('./routes/thumbnail');
 const newsletterRouter = require('./routes/newsletter');
 const healthRouter = require('./routes/health');
 const adminRouter = require('./routes/admin');
+const stockImagesRouter = require('./routes/stock-images');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -269,12 +268,6 @@ app.use(
     })
 );
 
-// Initialize file service
-fileService.initialize().catch(err => {
-    console.error('Failed to initialize file service:', err);
-    process.exit(1);
-});
-
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
 const publicDir = path.join(__dirname, 'public/images');
@@ -354,10 +347,10 @@ app.use('/api/webhook', webhookRouter);
 app.use('/api/sales', salesRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/ai', aiRouter);
-app.use('/api/thumbnail', thumbnailRouter);
 app.use('/api/newsletter', newsletterRouter);
 app.use('/api/health', healthRouter);
-app.use('/admin', adminRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/stock-images', stockImagesRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -1,38 +1,35 @@
 class SetValidationService {
-    validateSetData(data, isUpdate = false) {
+    static validateSetData(data) {
         const errors = [];
 
-        if (!isUpdate || data.title !== undefined) {
-            if (!data.title || !data.title.trim()) {
-                errors.push('Title is required');
-            }
+        // Check for either categoryId or category_id
+        if (!data.title || !data.title.trim()) {
+            errors.push('Title is required');
         }
-
-        if (!isUpdate || data.description !== undefined) {
-            if (!data.description || !data.description.trim()) {
-                errors.push('Description is required');
-            }
+        if (!data.description || !data.description.trim()) {
+            errors.push('Description is required');
         }
-
-        if (!isUpdate || data.category_id !== undefined) {
-            if (!data.category_id) {
-                errors.push('Category is required');
-            }
-        }
-
-        if (data.price !== undefined && isNaN(parseFloat(data.price))) {
-            errors.push('Price must be a valid number');
+        if (!data.categoryId && !data.category_id) {
+            errors.push('Category is required');
         }
 
         return errors;
     }
 
-    validateCards(cards) {
+    static validateCards(cards) {
         if (!Array.isArray(cards)) {
             throw new Error('Cards must be an array');
         }
 
+        // PROTECTION: Limit total cards per set
+        const MAX_CARDS_PER_SET = 50;
+        if (cards.length > MAX_CARDS_PER_SET) {
+            throw new Error(`Too many cards. Maximum allowed: ${MAX_CARDS_PER_SET}`);
+        }
+
         const errors = [];
+        const validLayouts = ['default', 'two-row', 'two-col'];
+
         cards.forEach((card, index) => {
             // Validate front
             if (!card.front || typeof card.front !== 'object') {
@@ -47,8 +44,8 @@ class SetValidationService {
                 if (card.front.imageUrl && typeof card.front.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Front imageUrl must be a string`);
                 }
-                if (card.front.text && !card.front.text.trim()) {
-                    errors.push(`Card ${index + 1}: Front text cannot be empty`);
+                if (card.front.layout && !validLayouts.includes(card.front.layout)) {
+                    errors.push(`Card ${index + 1}: Front layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
 
@@ -65,15 +62,8 @@ class SetValidationService {
                 if (card.back.imageUrl && typeof card.back.imageUrl !== 'string') {
                     errors.push(`Card ${index + 1}: Back imageUrl must be a string`);
                 }
-                if (card.back.text && !card.back.text.trim()) {
-                    errors.push(`Card ${index + 1}: Back text cannot be empty`);
-                }
-            }
-
-            // Validate hint if present
-            if (card.hint !== undefined && card.hint !== null) {
-                if (typeof card.hint !== 'string') {
-                    errors.push(`Card ${index + 1}: Hint must be a string`);
+                if (card.back.layout && !validLayouts.includes(card.back.layout)) {
+                    errors.push(`Card ${index + 1}: Back layout must be one of: ${validLayouts.join(', ')}`);
                 }
             }
         });
@@ -83,15 +73,17 @@ class SetValidationService {
         }
     }
 
-    validateTags(tags) {
+    static validateTags(tags) {
         if (!Array.isArray(tags)) {
             throw new Error('Tags must be an array');
         }
 
         const errors = [];
         tags.forEach((tag, index) => {
-            if (!tag || !tag.trim()) {
-                errors.push(`Tag ${index + 1}: Name is required`);
+            if (!tag || typeof tag !== 'string') {
+                errors.push(`Tag ${index + 1} must be a string`);
+            } else if (!tag.trim()) {
+                errors.push(`Tag ${index + 1} cannot be empty`);
             }
         });
 
@@ -101,4 +93,4 @@ class SetValidationService {
     }
 }
 
-module.exports = new SetValidationService();
+module.exports = SetValidationService;
