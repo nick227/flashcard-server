@@ -1,7 +1,7 @@
 const responseFormatter = require('./ResponseFormatter');
 
 class SetTransformer {
-    static transformSet(set) {
+    static transformSet(set, userId = null) {
         if (!set) return null;
 
         const transformedSet = {
@@ -24,12 +24,38 @@ class SetTransformer {
                 const tagName = tag.name || tag;
                 return tagName;
             }) : [],
-            cards: set.cards || [],
+            cards: set.cards ? set.cards.map(card => this.transformCard(card)) : [],
             createdAt: set.created_at,
             updatedAt: set.updated_at
         };
 
+        // Add isLiked field if userId is provided
+        if (userId && set.likes) {
+            transformedSet.isLiked = set.likes.some(like => like.user_id === userId);
+        }
+
         return transformedSet;
+    }
+
+    static transformCard(card) {
+        if (!card) return null;
+
+        return {
+            id: card.id,
+            front: {
+                text: card.front || '',
+                imageUrl: card.front_image || null,
+                layout: card.layout_front || 'default'
+            },
+            back: {
+                text: card.back || '',
+                imageUrl: card.back_image || null,
+                layout: card.layout_back || 'default'
+            },
+            hint: card.hint || null,
+            createdAt: card.created_at || new Date(),
+            updatedAt: card.updated_at || new Date()
+        };
     }
 
     static transformSetData(data) {

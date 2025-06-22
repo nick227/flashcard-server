@@ -83,15 +83,15 @@ class AISocketHelper {
                 return next(new Error('Authentication token required'))
             }
 
-            const user = await authService.getUserFromToken(token)
-            if (!user) {
+            const { user, error } = await authService.getUserFromToken(token)
+            if (error || !user) {
                 return next(new Error('Invalid user'))
             }
 
             socket.user = user
             next()
         } catch (error) {
-            console.error('Socket authentication error:', error)
+            console.error('Socket authentication error:', error.message)
             if (error.name === 'TokenExpiredError') {
                 return next(new Error('Token expired'))
             }
@@ -152,7 +152,6 @@ class AISocketHelper {
      */
     validateCard(card) {
         if (!card || typeof card !== 'object') {
-            console.warn('Invalid card structure:', card)
             return null
         }
 
@@ -169,11 +168,9 @@ class AISocketHelper {
         }
 
         if (!validatedCard.front.text && !validatedCard.front.imageUrl) {
-            console.warn('Card front has no content:', card)
             return null
         }
         if (!validatedCard.back.text && !validatedCard.back.imageUrl) {
-            console.warn('Card back has no content:', card)
             return null
         }
 
@@ -248,33 +245,6 @@ class AISocketHelper {
             clearTimeout(generation.timeoutId)
         }
         activeGenerations.delete(generationId)
-    }
-
-    /**
-     * Log socket event with consistent format
-     * @param {string} event - The event name
-     * @param {Object} data - The event data
-     */
-    logSocketEvent(event, data) {
-        console.log(`Socket ${event}:`, {
-            timestamp: new Date().toISOString(),
-            ...data
-        })
-    }
-
-    /**
-     * Log socket error with consistent format
-     * @param {string} context - The error context
-     * @param {Error} error - The error object
-     * @param {Object} metadata - Additional error metadata
-     */
-    logSocketError(context, error, metadata = {}) {
-        console.error(`Socket ${context} error:`, {
-            timestamp: new Date().toISOString(),
-            error: error.message || error,
-            stack: error.stack,
-            ...metadata
-        })
     }
 }
 

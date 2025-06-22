@@ -1,7 +1,6 @@
 const apicache = require('apicache');
 
 const cache = apicache.options({
-    debug: process.env.NODE_ENV === 'development',
     statusCodes: { include: [200] } // Only cache successful responses
 }).middleware;
 

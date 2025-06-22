@@ -1,9 +1,10 @@
-const { Server } = require('socket.io')
+const socketIo = require('socket.io')
 const AIService = require('./AIService')
 const jwt = require('jsonwebtoken')
 const authService = require('../AuthService')
 const generationSessionService = require('./GenerationSessionService')
 const socketHelper = require('./AISocketHelper')
+const { User } = require('../../db')
 
 /**
  * AISocketService
@@ -27,6 +28,7 @@ class AISocketService {
         this.RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour
         this.MAX_REQUESTS = 20 // Max requests per hour
         this.CONCURRENT_LIMIT = 2 // Max concurrent generations
+        this.userConnections = new Map() // Track user connections
 
         // Session status constants matching database enum
         this.SESSION_STATUS = {
@@ -102,26 +104,23 @@ class AISocketService {
      */
     async authenticateSocket(socket, next) {
         try {
-            const token = socket.handshake.auth.token
+            const token = socket.handshake.auth.token || socket.handshake.headers.authorization.replace('Bearer ', '')
+
             if (!token) {
                 return next(new Error('Authentication token required'))
             }
 
-            const user = await authService.getUserFromToken(token)
+            const decoded = jwt.verify(token, process.env.JWT_SECRET)
+            const user = await User.findByPk(decoded.id)
+
             if (!user) {
-                return next(new Error('Invalid user'))
+                return next(new Error('User not found'))
             }
 
             socket.user = user
             next()
         } catch (error) {
-            console.error('Socket authentication error:', error)
-            if (error.name === 'TokenExpiredError') {
-                return next(new Error('Token expired'))
-            }
-            if (error.name === 'JsonWebTokenError') {
-                return next(new Error('Invalid token'))
-            }
+            console.error('Socket authentication error:', error.message)
             next(new Error('Authentication failed'))
         }
     }
@@ -131,35 +130,36 @@ class AISocketService {
      * @param {Server} server - The HTTP server instance
      */
     initialize(server) {
-        // If already initialized, don't reinitialize
         if (this.io) {
-            console.log('Socket server already initialized')
-            return
+            return; // Already initialized
         }
 
-        socketHelper.logSocketEvent('initialize', { environment: process.env.NODE_ENV })
-
-        // Initialize socket server with connection limits
-        this.io = socketHelper.initializeServer(server, {
-            maxHttpBufferSize: 1e8,
-            pingTimeout: 60000,
-            pingInterval: 25000,
-            connectTimeout: 45000,
-            allowUpgrades: true,
-            perMessageDeflate: {
-                threshold: 2048
-            },
+        this.io = socketIo(server, {
             cors: {
-                origin: true,
+                origin: process.env.NODE_ENV === 'production' ? [
+                    'https://flashcard-client-phi.vercel.app',
+                    'https://flashcard-academy.vercel.app',
+                    'https://flashcard-client-git-main-nick227s-projects.vercel.app',
+                    'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
+                    'https://flashcardacademy.vercel.app',
+                    'https://www.flashcardacademy.vercel.app',
+                    'https://flashcard-client-production.vercel.app'
+                ] : ['http://localhost:5173', 'http://127.0.0.1:5173'],
                 methods: ['GET', 'POST'],
                 credentials: true
-            }
+            },
+            transports: ['websocket', 'polling']
         })
 
-        // Add authentication middleware
+        this.setupMiddleware()
+        this.setupEventHandlers()
+    }
+
+    setupMiddleware() {
+        // Authentication middleware
         this.io.use(async(socket, next) => {
             try {
-                await socketHelper.authenticateSocket(socket, next)
+                await this.authenticateSocket(socket, next)
             } catch (error) {
                 next(error)
             }
@@ -168,29 +168,16 @@ class AISocketService {
         // Apply rate limiting middleware
         this.io.use((socket, next) => {
             try {
-                socketHelper.checkRateLimit(this.userLimits, socket, next)
+                this.checkRateLimit(socket, next)
             } catch (error) {
                 next(error)
             }
         })
+    }
 
-        // Handle connection with connection tracking
+    setupEventHandlers() {
         this.io.on('connection', (socket) => {
-            // Check if user already has a connection
-            const existingSocket = Array.from(this.io.sockets.sockets.values())
-                .find(s => s.user && s.user.id === socket.user.id && s.id !== socket.id)
-
-            if (existingSocket) {
-                console.log(`User ${socket.user.id} already has a connection, disconnecting old socket`)
-                    // Disconnect the old socket with a specific reason
-                existingSocket.disconnect(true)
-                    // Wait a moment before allowing the new connection
-                setTimeout(() => {
-                    this.handleConnection(socket)
-                }, 100)
-            } else {
-                this.handleConnection(socket)
-            }
+            this.handleConnection(socket)
         })
     }
 
@@ -199,138 +186,104 @@ class AISocketService {
      * @param {Socket} socket - The socket instance
      */
     handleConnection(socket) {
-        socketHelper.logSocketEvent('connection', {
-            socketId: socket.id,
-            userId: socket.user.id,
-            transport: socket.conn.transport.name,
-            environment: process.env.NODE_ENV,
-            origin: socketHelper.cleanUrl(socket.handshake.headers.origin)
-        })
+        const userId = socket.user.id
 
-        // Store user ID for cleanup
-        socket.userId = socket.user.id
+        // Check if user already has a connection
+        if (this.userConnections.has(userId)) {
+            const existingSocket = this.userConnections.get(userId)
+            if (existingSocket && existingSocket.id !== socket.id) {
+                existingSocket.disconnect()
+            }
+        }
+
+        // Store the new connection
+        this.userConnections.set(userId, socket)
+
+        // Join user-specific room
+        socket.join(`user_${userId}`)
 
         // Handle disconnection
-        socket.on('disconnect', async(reason) => {
-            socketHelper.logSocketEvent('disconnect', {
-                socketId: socket.id,
-                userId: socket.userId,
-                reason,
-                transport: socket.conn.transport.name
-            })
-
-            // Clean up any active generations for this user
-            if (socket.userId) {
-                const userGenerations = socketHelper.getUserActiveGenerations(this.activeGenerations, socket.userId)
-                await Promise.all(userGenerations.map(async(id) => {
-                    const generation = this.activeGenerations.get(id)
-                    if (generation) {
-                        // Clear any timeouts
-                        if (generation.timeoutId) clearTimeout(generation.timeoutId)
-                            // Mark session as cancelled in DB if not already done
-                        if (generation.currentStatus !== this.SESSION_STATUS.COMPLETED &&
-                            generation.currentStatus !== this.SESSION_STATUS.FAILED &&
-                            generation.currentStatus !== this.SESSION_STATUS.CANCELLED) {
-                            try {
-                                await generationSessionService.updateProgress(generation.sessionId, {
-                                    status: this.SESSION_STATUS.CANCELLED,
-                                    errorMessage: `Generation cancelled: ${reason}`
-                                })
-                                generation.currentStatus = this.SESSION_STATUS.CANCELLED
-                            } catch (err) {
-                                console.error('Error updating session to cancelled on disconnect:', err)
-                            }
-                        }
-                        this.activeGenerations.delete(id)
-                    }
-                }))
-            }
+        socket.on('disconnect', () => {
+            this.userConnections.delete(userId)
         })
 
-        // Handle generation start
-        socket.on('startGeneration', (data, callback) => this.handleGenerationStart(socket, data, callback))
-
-        // Handle single card face generation
-        socket.on('generateSingleCardFace', async(data, callback) => {
-            try {
-                const { side, title, description, category, otherSideContent } = data
-                const userId = socket.user.id
-
-                // Validate request with better error messages
-                if (!side || !['front', 'back'].includes(side)) {
-                    throw new Error('Invalid side parameter. Must be "front" or "back"')
-                }
-
-                if (!title || !title.trim()) {
-                    throw new Error('Title is required')
-                }
-
-                if (!description || !description.trim()) {
-                    throw new Error('Description is required')
-                }
-
-                console.log('Single card face generation request:', {
-                    side,
-                    title: title.substring(0, 50) + '...',
-                    description: description.substring(0, 50) + '...',
-                    category: category || 'none',
-                    userId
-                })
-
-                // Create a minimal session for tracking
-                const session = await generationSessionService.createSession(
-                    userId,
-                    title,
-                    description,
-                    'pending',
-                    category
-                )
-
-                if (!session || !session.id) {
-                    throw new Error('Failed to create generation session')
-                }
-
-                try {
-                    // Update session status
-                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.PREPARING, 'Generating card content...')
-
-                    // Generate the content
-                    const result = await AIService.generateSingleCardFace(
-                        side,
-                        title,
-                        description,
-                        category,
-                        otherSideContent,
-                        userId
-                    )
-
-                    // Update session status to generating before completed
-                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.GENERATING, 'Generating card face...')
-
-                    // Update session status
-                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.COMPLETED, 'Generation complete')
-
-                    console.log('Single card face generation completed:', {
-                        side,
-                        textLength: result.text ? result.text.length : 0,
-                        requestId: result.requestId
-                    })
-
-                    // Return the result
-                    if (callback) callback({ text: result.text })
-                } catch (error) {
-                    console.error('Single card face generation error:', error)
-                    await this.handleGenerationError(socket, null, session.id, error)
-                    if (callback) callback({ error: error.message })
-                }
-            } catch (error) {
-                console.error('Single card face generation error:', error)
-                if (callback) callback({ error: error.message })
-            }
+        // Handle AI generation progress updates
+        socket.on('ai_progress', (data) => {
+            this.handleAIProgress(socket, data)
         })
 
-        // Handle errors
-        socket.on('error', (error) => this.handleError(socket, error))
+        // Handle AI generation completion
+        socket.on('ai_complete', (data) => {
+            this.handleAIComplete(socket, data)
+        })
+
+        // Handle AI generation errors
+        socket.on('ai_error', (data) => {
+            this.handleAIError(socket, data)
+        })
+    }
+
+    handleAIProgress(socket, data) {
+        const { userId, progress, message } = data
+        socket.to(`user_${userId}`).emit('ai_progress_update', {
+            progress,
+            message
+        })
+    }
+
+    handleAIComplete(socket, data) {
+        const { userId, result } = data
+        socket.to(`user_${userId}`).emit('ai_generation_complete', {
+            result
+        })
+    }
+
+    handleAIError(socket, data) {
+        const { userId, error } = data
+        socket.to(`user_${userId}`).emit('ai_generation_error', {
+            error
+        })
+    }
+
+    // Method to emit progress to specific user
+    emitProgress(userId, progress, message) {
+        this.io.to(`user_${userId}`).emit('ai_progress_update', {
+            progress,
+            message
+        })
+    }
+
+    // Method to emit completion to specific user
+    emitComplete(userId, result) {
+        this.io.to(`user_${userId}`).emit('ai_generation_complete', {
+            result
+        })
+    }
+
+    // Method to emit error to specific user
+    emitError(userId, error) {
+        this.io.to(`user_${userId}`).emit('ai_generation_error', {
+            error
+        })
+    }
+
+    // Get connected users count
+    getConnectedUsersCount() {
+        return this.userConnections.size
+    }
+
+    // Check if user is connected
+    isUserConnected(userId) {
+        return this.userConnections.has(userId)
+    }
+
+    // Disconnect specific user
+    disconnectUser(userId) {
+        const socket = this.userConnections.get(userId)
+        if (socket) {
+            socket.disconnect()
+            this.userConnections.delete(userId)
+        }
     }
 
     /**
@@ -635,46 +588,6 @@ class AISocketService {
 
         socket.emit('generationError', {
             generationId,
-            error: errorMessage
-        })
-    }
-
-    /**
-     * Handle socket errors
-     * @param {Socket} socket - The socket instance
-     * @param {Error} error - The error that occurred
-     */
-    handleError(socket, error) {
-        const errorMessage = error.message || 'Internal server error'
-
-        socketHelper.logSocketError('socket', error, {
-            socketId: socket.id,
-            userId: socket.userId,
-            errorMessage
-        })
-
-        // Clean up any active generations for this socket
-        if (socket.userId) {
-            const userGenerations = socketHelper.getUserActiveGenerations(this.activeGenerations, socket.userId)
-            userGenerations.forEach(id => {
-                const generation = this.activeGenerations.get(id)
-                if (generation) {
-                    if (generation.timeoutId) clearTimeout(generation.timeoutId)
-                    if (generation.currentStatus !== this.SESSION_STATUS.COMPLETED &&
-                        generation.currentStatus !== this.SESSION_STATUS.FAILED &&
-                        generation.currentStatus !== this.SESSION_STATUS.CANCELLED) {
-                        generationSessionService.updateProgress(generation.sessionId, {
-                            status: this.SESSION_STATUS.FAILED,
-                            errorMessage
-                        })
-                        generation.currentStatus = this.SESSION_STATUS.FAILED
-                    }
-                    this.activeGenerations.delete(id)
-                }
-            })
-        }
-
-        socket.emit('generationError', {
             error: errorMessage
         })
     }

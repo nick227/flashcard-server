@@ -1,6 +1,5 @@
 const ApiController = require('./ApiController');
 const SetService = require('../services/SetService');
-const SetValidationService = require('../services/SetValidationService');
 const SetTransformer = require('../services/SetTransformer');
 const responseFormatter = require('../services/ResponseFormatter');
 const PaginationService = require('../services/PaginationService');
@@ -20,19 +19,13 @@ class SetsController extends ApiController {
     // Override batchGet to add logging
     async batchGet(req, res) {
         const requestId = req.headers['x-request-id'] || 'unknown';
-        console.log(`[${requestId}] Starting batch request:`, {
-            type: req.params.type,
-            ids: req.query.ids,
-            headers: req.headers,
-            timestamp: new Date().toISOString()
-        });
 
         try {
             const type = req.params.type;
             const ids = req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)) : [];
 
             if (!ids.length) {
-                console.log(`[${requestId}] No IDs provided`);
+                console.error(`[${requestId}] No IDs provided`);
                 return res.status(400).json(responseFormatter.formatError({
                     message: 'No IDs provided'
                 }));
@@ -41,19 +34,16 @@ class SetsController extends ApiController {
             // Add batch size limit
             const MAX_BATCH_SIZE = 50;
             if (ids.length > MAX_BATCH_SIZE) {
-                console.log(`[${requestId}] Batch size too large:`, ids.length);
+                console.error(`[${requestId}] Batch size too large:`, ids.length);
                 return res.status(400).json(responseFormatter.formatError({
                     message: `Batch size too large. Maximum allowed: ${MAX_BATCH_SIZE}`
                 }));
             }
 
-            console.log(`[${requestId}] Processing batch request for type: ${type}, ids:`, ids);
-
             let results;
             try {
                 switch (type) {
                     case 'views':
-                        console.log(`[${requestId}] Querying History table for views`);
                         results = await this.model.sequelize.models.History.findAll({
                             attributes: [
                                 'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
@@ -64,10 +54,8 @@ class SetsController extends ApiController {
                             group: ['set_id'],
                             raw: true
                         });
-                        console.log(`[${requestId}] History query results:`, results);
                         break;
                     case 'likes':
-                        console.log(`[${requestId}] Querying UserLike table for likes`);
                         results = await this.model.sequelize.models.UserLike.findAll({
                             attributes: [
                                 'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
@@ -78,10 +66,8 @@ class SetsController extends ApiController {
                             group: ['set_id'],
                             raw: true
                         });
-                        console.log(`[${requestId}] UserLike query results:`, results);
                         break;
                     case 'cards':
-                        console.log(`[${requestId}] Querying Card table for cards`);
                         results = await this.model.sequelize.models.Card.findAll({
                             attributes: [
                                 'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
@@ -92,10 +78,8 @@ class SetsController extends ApiController {
                             group: ['set_id'],
                             raw: true
                         });
-                        console.log(`[${requestId}] Card query results:`, results);
                         break;
                     default:
-                        console.log(`[${requestId}] Invalid batch type:`, type);
                         return res.status(400).json(responseFormatter.formatError({
                             message: 'Invalid batch type'
                         }));
@@ -126,8 +110,6 @@ class SetsController extends ApiController {
                     formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
                 }
             });
-
-            console.log(`[${requestId}] Formatted results:`, formattedResults);
 
             res.json(formattedResults);
         } catch (err) {
@@ -321,13 +303,13 @@ class SetsController extends ApiController {
     }
 
     async create(req, res) {
-        console.log('[SetsController] POST /sets - Starting set creation');
-        console.log('[SetsController] Request details:', {
+        console.log('[SetsController] Starting set creation...', {
             userId: req.user ? req.user.id : null,
             hasFiles: !!req.files,
-            fileCount: req.files ? Object.keys(req.files).length : 0,
-            bodyKeys: Object.keys(req.body || {}),
-            contentType: req.get('Content-Type')
+            fileKeys: req.files ? Object.keys(req.files) : [],
+            hasThumbnailUrl: !!req.body.thumbnailUrl,
+            thumbnailUrl: req.body.thumbnailUrl,
+            cardsCount: req.body.cards ? JSON.parse(req.body.cards).length : 0
         });
 
         try {
@@ -342,44 +324,42 @@ class SetsController extends ApiController {
                 educator_id: req.user.id
             };
 
-            console.log('[SetsController] Set data extracted from body:', {
+            console.log('[SetsController] Set data assembled:', {
                 title: setData.title,
-                description: setData.description,
                 categoryId: setData.categoryId,
                 price: setData.price,
                 isPublic: setData.isPublic,
-                educatorId: setData.educator_id
+                isSubscriberOnly: setData.isSubscriberOnly
             });
 
             // Extract cards data
             const cards = JSON.parse(req.body.cards || '[]');
             console.log('[SetsController] Cards data extracted:', {
-                cardCount: cards.length,
+                cardsCount: cards.length,
                 cardsWithImages: cards.filter(card =>
                     (card.front && card.front.imageUrl) ||
                     (card.back && card.back.imageUrl)
                 ).length
             });
 
-            // Log image files if present
-            if (req.files) {
-                console.log('[SetsController] Processing image files:');
-                Object.entries(req.files).forEach(([fieldName, files]) => {
-                    console.log(`  Field "${fieldName}": ${files.length} files`);
-                    files.forEach((file, index) => {
-                        console.log(`    [${index}] ${file.originalname} (${file.size} bytes)`);
-                    });
-                });
-            }
-
             // Extract tags
             const tags = req.body.tags ? JSON.parse(req.body.tags) : null;
             console.log('[SetsController] Tags extracted:', tags);
 
             // Thumbnail Handling
+            console.log('[SetsController] Processing thumbnail...', {
+                hasThumbnailFile: !!(req.files && req.files.thumbnail),
+                hasThumbnailUrl: !!req.body.thumbnailUrl,
+                thumbnailUrl: req.body.thumbnailUrl
+            });
+
             const thumbnailFile = req.files && req.files.thumbnail ? req.files.thumbnail[0] : null;
             if (thumbnailFile) {
-                console.log('[SetsController] Uploading thumbnail...');
+                console.log('[SetsController] Uploading thumbnail file to Cloudinary...', {
+                    filename: thumbnailFile.originalname,
+                    size: thumbnailFile.size,
+                    mimetype: thumbnailFile.mimetype
+                });
                 const result = await CloudinaryService.uploadImage(thumbnailFile.buffer, {
                     folder: 'thumbnails',
                     transformation: [
@@ -388,25 +368,59 @@ class SetsController extends ApiController {
                     ]
                 });
                 setData.thumbnail = result.secure_url;
-                console.log('[SetsController] Thumbnail uploaded:', result.secure_url);
+                console.log('[SetsController] Thumbnail uploaded successfully:', result.secure_url);
             } else if (req.body.thumbnailUrl) {
+                console.log('[SetsController] Using stock image thumbnail:', req.body.thumbnailUrl);
                 setData.thumbnail = req.body.thumbnailUrl;
+            } else {
+                console.log('[SetsController] No thumbnail provided');
             }
 
             // Process image files and update card data
             if (req.files) {
-                console.log('[SetsController] Processing card image files...');
-                await this.processCardImages(cards, req.files);
-                console.log('[SetsController] Card image processing completed');
+                console.log('[SetsController] Checking for card images...', {
+                    fileKeys: Object.keys(req.files),
+                    cardImageKeys: Object.keys(req.files).filter(key => key.startsWith('card_') && key.endsWith('_image'))
+                });
+
+                // Check if there are any actual card image files to upload
+                const hasCardImages = Object.keys(req.files).some(key =>
+                    key.startsWith('card_') && key.endsWith('_image') && req.files[key] && req.files[key].length > 0
+                );
+
+                console.log('[SetsController] Card images check:', {
+                    hasCardImages,
+                    cardImageDetails: hasCardImages ? Object.keys(req.files)
+                        .filter(key => key.startsWith('card_') && key.endsWith('_image'))
+                        .map(key => ({
+                            key,
+                            hasFiles: !!(req.files[key] && req.files[key].length > 0),
+                            fileCount: req.files[key] ? req.files[key].length : 0
+                        })) : []
+                });
+
+                if (hasCardImages) {
+                    console.log('[SetsController] Processing card images...');
+                    await this.processCardImages(cards, req.files);
+                    console.log('[SetsController] Card images processed successfully');
+                } else {
+                    console.log('[SetsController] No card images to process, skipping upload');
+                }
+            } else {
+                console.log('[SetsController] No files in request');
             }
 
-            // Create the set
-            console.log('[SetsController] Calling SetService.createSet');
-            const result = await this.setService.createSet(setData, cards, tags);
+            console.log('[SetsController] Final set data before creation:', {
+                thumbnail: setData.thumbnail,
+                cardsCount: cards.length,
+                tagsCount: tags ? tags.length : 0
+            });
 
+            // Create the set
+            const result = await this.setService.createSet(setData, cards, tags);
             console.log('[SetsController] Set created successfully:', {
                 setId: result.id,
-                cardCount: result.cards ? result.cards.length : 0
+                title: result.title
             });
 
             res.status(201).json(result);
@@ -432,7 +446,6 @@ class SetsController extends ApiController {
     async update(req, res) {
         try {
             const setId = parseInt(req.params.id, 10);
-            console.log('[SetsController] Starting set update for ID:', setId);
 
             // Check if set exists and user has permission
             const existingSet = await this.setService.getSetById(setId);
@@ -443,12 +456,6 @@ class SetsController extends ApiController {
                 return res.status(403).json({ message: 'Not authorized to update this set' });
             }
 
-            console.log('[SetsController] Set found and user authorized:', {
-                setId: existingSet.id,
-                currentTitle: existingSet.title,
-                currentDescription: existingSet.description
-            });
-
             // Parse request data from FormData
             const setData = {
                 title: req.body.title,
@@ -456,22 +463,15 @@ class SetsController extends ApiController {
                 category_id: req.body.category_id ? parseInt(req.body.category_id, 10) : undefined,
                 price: parseFloat(req.body.price || '0'),
                 is_subscriber_only: req.body.isSubscriberOnly === 'true',
-                hidden: req.body.isPublic !== 'true' // Inverted: isPublic=true means hidden=false
+                hidden: req.body.isPublic !== 'true', // Inverted: isPublic=true means hidden=false
+                educator_id: req.user.id
             };
             const cards = req.body.cards ? JSON.parse(req.body.cards) : [];
             const tags = req.body.tags ? JSON.parse(req.body.tags) : [];
 
-            console.log('[SetsController] Parsed update data:', {
-                newTitle: setData.title,
-                newDescription: setData.description,
-                newCardCount: cards.length,
-                newTagCount: tags.length
-            });
-
             // Handle thumbnail if provided
             if (req.files && req.files.thumbnail) {
                 const thumbnailFile = req.files.thumbnail[0];
-                console.log('[SetsController] Uploading new thumbnail...');
                 const result = await CloudinaryService.uploadImage(thumbnailFile.buffer, {
                     folder: 'thumbnails',
                     transformation: [
@@ -480,21 +480,24 @@ class SetsController extends ApiController {
                     ]
                 });
                 setData.thumbnail = result.secure_url;
-                console.log('[SetsController] New thumbnail uploaded:', result.secure_url);
             } else if (req.body.thumbnailUrl) {
                 setData.thumbnail = req.body.thumbnailUrl;
             }
 
             // Process card images if any
             if (req.files) {
-                console.log('[SetsController] Processing card image files...');
-                await this.processCardImages(cards, req.files);
+                // Check if there are any actual card image files to upload
+                const hasCardImages = Object.keys(req.files).some(key =>
+                    key.startsWith('card_') && key.endsWith('_image') && req.files[key] && req.files[key].length > 0
+                );
+
+                if (hasCardImages) {
+                    await this.processCardImages(cards, req.files);
+                }
             }
 
             // Call the service to perform the update
-            console.log('[SetsController] Calling SetService.updateSet...');
             const updatedSet = await this.setService.updateSet(setId, setData, cards, tags);
-            console.log('[SetsController] Set update completed successfully');
 
             res.json(updatedSet);
         } catch (error) {
@@ -513,11 +516,10 @@ class SetsController extends ApiController {
 
     async list(req, res) {
         try {
-            console.log('SetsController.list - Starting with query:', req.query);
 
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
-                console.log('Validation errors:', errors);
+                console.error('Validation errors:', errors);
                 return res.status(400).json(responseFormatter.formatError({
                     message: errors.join(', '),
                     errors
@@ -526,7 +528,7 @@ class SetsController extends ApiController {
 
             // Validate filter values
             if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
-                console.log('Invalid educator ID:', req.query.educatorId);
+                console.error('Invalid educator ID:', req.query.educatorId);
                 return res.status(400).json({ error: 'Invalid educator ID' });
             }
 
@@ -534,7 +536,6 @@ class SetsController extends ApiController {
                 ...req.query,
                 userId: req.user ? req.user.id : null
             });
-            console.log('Parsed params:', params);
 
             // Build where clause for set type
             let whereClause = {
@@ -542,7 +543,6 @@ class SetsController extends ApiController {
             };
 
             if (req.query.setType) {
-                console.log('Building where clause for set type:', req.query.setType);
                 switch (req.query.setType) {
                     case 'free':
                         whereClause = {
@@ -573,7 +573,6 @@ class SetsController extends ApiController {
                 // If category name is provided, find the category ID
                 let categoryId = null;
                 if (req.query.category) {
-                    console.log('Looking up category:', req.query.category);
                     const category = await this.model.sequelize.models.Category.findOne({
                         where: { name: req.query.category },
                         attributes: ['id']
@@ -581,9 +580,8 @@ class SetsController extends ApiController {
                     if (category) {
                         categoryId = category.id;
                         whereClause.category_id = categoryId;
-                        console.log('Found category ID:', categoryId);
                     } else {
-                        console.log('Category not found:', req.query.category);
+                        console.error('Category not found:', req.query.category);
                         return res.status(404).json({ error: 'Category not found' });
                     }
                 }
@@ -593,18 +591,15 @@ class SetsController extends ApiController {
                     sortBy: req.query.sortBy,
                     sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
                 } : this.parseSortParams(req.query.sortOrder || 'featured');
-                console.log('Sort parameters:', { sortBy, sortOrder });
 
                 // Add search conditions if search query is provided
                 if (params.search) {
                     try {
-                        console.log('Building search conditions for:', params.search);
                         const searchConditions = this.searchService.buildSearchConditions(params.search);
                         whereClause = {
                             ...whereClause,
                             ...searchConditions
                         };
-                        console.log('Search conditions added:', searchConditions);
                     } catch (searchError) {
                         console.error('Search error:', searchError);
                         return res.status(400).json(responseFormatter.formatError({
@@ -671,10 +666,8 @@ class SetsController extends ApiController {
                     allowedSortFields: ['created_at', 'title', 'price', 'featured'],
                     include: includes
                 };
-                console.log('Pagination options:', JSON.stringify(paginationOptions, null, 2));
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
-                console.log('Sets found:', result.items.length);
 
                 // Transform the results
                 result.items = result.items.map(set => {
@@ -727,8 +720,6 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting set with ID:', setId, 'User:', req.user ? req.user.id : 'Anonymous');
-
             // Get the set with all necessary relations
             const set = await this.model.findByPk(setId, {
                 include: [{
@@ -757,7 +748,7 @@ class SetsController extends ApiController {
             });
 
             if (!set) {
-                console.log('Set not found with ID:', setId);
+                console.error('Set not found with ID:', setId);
                 return res.status(404).json(responseFormatter.formatError({
                     message: 'Set not found'
                 }));
@@ -803,7 +794,18 @@ class SetsController extends ApiController {
 
     async delete(req, res) {
         try {
-            await this.setService.deleteSet(req.params.id);
+            const setId = parseInt(req.params.id, 10);
+
+            // Check if set exists and user has permission
+            const existingSet = await this.setService.getSetById(setId);
+            if (!existingSet) {
+                return res.status(404).json({ message: 'Set not found' });
+            }
+            if (existingSet.educator_id !== req.user.id) {
+                return res.status(403).json({ message: 'Not authorized to delete this set' });
+            }
+
+            await this.setService.deleteSet(setId);
             return res.json(responseFormatter.formatSuccess('Set deleted successfully'));
         } catch (err) {
             return this.handleError(err, res);
@@ -812,7 +814,18 @@ class SetsController extends ApiController {
 
     async toggleHidden(req, res) {
         try {
-            const set = await this.setService.toggleHidden(req.params.id);
+            const setId = parseInt(req.params.id, 10);
+
+            // Check if set exists and user has permission
+            const existingSet = await this.setService.getSetById(setId);
+            if (!existingSet) {
+                return res.status(404).json({ message: 'Set not found' });
+            }
+            if (existingSet.educator_id !== req.user.id) {
+                return res.status(403).json({ message: 'Not authorized to modify this set' });
+            }
+
+            const set = await this.setService.toggleHidden(setId);
             return res.json(set);
         } catch (err) {
             return this.handleError(err, res);
@@ -1054,9 +1067,10 @@ class SetsController extends ApiController {
      * @returns {Array} Processed cards with Cloudinary URLs
      */
     async processCardImages(cards, files) {
-        console.log('[SetsController] Starting card image processing:', {
-            cardCount: cards.length,
-            fileFields: Object.keys(files)
+        console.log('[SetsController] processCardImages started...', {
+            cardsCount: cards.length,
+            fileKeys: Object.keys(files),
+            cardImageKeys: Object.keys(files).filter(key => key.startsWith('card_') && key.endsWith('_image'))
         });
 
         const uploadPromises = [];
@@ -1066,17 +1080,17 @@ class SetsController extends ApiController {
             const frontImageKey = `card_${i}_front_image`;
             const backImageKey = `card_${i}_back_image`;
 
-            console.log(`[SetsController] Processing card ${i}:`, {
+            console.log(`[SetsController] Processing card ${i}...`, {
                 frontImageKey,
                 backImageKey,
-                hasFrontImage: !!files[frontImageKey],
-                hasBackImage: !!files[backImageKey]
+                hasFrontImage: !!(files[frontImageKey] && files[frontImageKey][0]),
+                hasBackImage: !!(files[backImageKey] && files[backImageKey][0])
             });
 
             // Process front image
             if (files[frontImageKey] && files[frontImageKey][0]) {
                 const frontFile = files[frontImageKey][0];
-                console.log(`[SetsController] Uploading front image for card ${i}:`, {
+                console.log(`[SetsController] Uploading front image for card ${i}...`, {
                     filename: frontFile.originalname,
                     size: frontFile.size,
                     mimetype: frontFile.mimetype
@@ -1089,10 +1103,7 @@ class SetsController extends ApiController {
                         { quality: 'auto', fetch_format: 'auto' }
                     ]
                 }).then(result => {
-                    console.log(`[SetsController] Front image uploaded for card ${i}:`, {
-                        publicId: result.public_id,
-                        url: result.secure_url
-                    });
+                    console.log(`[SetsController] Front image uploaded successfully for card ${i}:`, result.secure_url);
                     return { cardIndex: i, side: 'front', result };
                 }).catch(error => {
                     console.error(`[SetsController] Front image upload failed for card ${i}:`, error);
@@ -1105,7 +1116,7 @@ class SetsController extends ApiController {
             // Process back image
             if (files[backImageKey] && files[backImageKey][0]) {
                 const backFile = files[backImageKey][0];
-                console.log(`[SetsController] Uploading back image for card ${i}:`, {
+                console.log(`[SetsController] Uploading back image for card ${i}...`, {
                     filename: backFile.originalname,
                     size: backFile.size,
                     mimetype: backFile.mimetype
@@ -1118,10 +1129,7 @@ class SetsController extends ApiController {
                         { quality: 'auto', fetch_format: 'auto' }
                     ]
                 }).then(result => {
-                    console.log(`[SetsController] Back image uploaded for card ${i}:`, {
-                        publicId: result.public_id,
-                        url: result.secure_url
-                    });
+                    console.log(`[SetsController] Back image uploaded successfully for card ${i}:`, result.secure_url);
                     return { cardIndex: i, side: 'back', result };
                 }).catch(error => {
                     console.error(`[SetsController] Back image upload failed for card ${i}:`, error);
@@ -1132,11 +1140,11 @@ class SetsController extends ApiController {
             }
         }
 
-        console.log(`[SetsController] Starting ${uploadPromises.length} image uploads...`);
+        console.log(`[SetsController] Total upload promises: ${uploadPromises.length}`);
 
         try {
             const results = await Promise.all(uploadPromises);
-            console.log('[SetsController] All image uploads completed successfully');
+            console.log('[SetsController] All card images uploaded successfully:', results.length);
 
             // Update card data with uploaded URLs
             results.forEach(({ cardIndex, side, result }) => {
@@ -1155,7 +1163,7 @@ class SetsController extends ApiController {
                 }
             });
 
-            console.log('[SetsController] Card image processing completed successfully');
+            console.log('[SetsController] Card data updated with uploaded URLs');
         } catch (error) {
             console.error('[SetsController] Image upload processing failed:', error);
             throw error;
@@ -1234,8 +1242,6 @@ class SetsController extends ApiController {
                 }));
             }
 
-            console.log('Getting related sets for set ID:', setId);
-
             // Get the current set to find its category
             const currentSet = await this.model.findByPk(setId, {
                 include: [{
@@ -1246,23 +1252,16 @@ class SetsController extends ApiController {
             });
 
             if (!currentSet) {
-                console.log('Set not found with ID:', setId);
+                console.error('Set not found with ID:', setId);
                 return res.status(404).json(responseFormatter.formatError({
                     message: 'Set not found'
                 }));
             }
 
-            console.log('Current set found:', {
-                id: currentSet.id,
-                title: currentSet.title,
-                category_id: currentSet.category_id,
-                category: currentSet.category ? currentSet.category.name : 'No category'
-            });
-
             const currentCategoryId = currentSet.category_id;
 
             if (!currentCategoryId) {
-                console.log('No category_id found for set:', setId);
+                console.error('No category_id found for set:', setId);
                 return res.json([]); // Return empty array if no category
             }
 
@@ -1289,8 +1288,6 @@ class SetsController extends ApiController {
                 ],
                 limit: 6 // Limit to 6 related sets
             });
-
-            console.log('Found related sets:', relatedSets.length);
 
             // Get card counts separately to avoid association issues
             const setIds = relatedSets.map(set => set.id);
@@ -1320,7 +1317,6 @@ class SetsController extends ApiController {
                 };
             });
 
-            console.log('Transformed sets:', transformedSets.length);
             res.json(transformedSets);
         } catch (err) {
             console.error('SetsController.getRelatedSets - Error:', err);

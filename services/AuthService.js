@@ -4,24 +4,21 @@ const db = require('../db');
 
 class AuthService {
     constructor() {
-        if (!process.env.JWT_SECRET) {
-            console.error('JWT_SECRET is not set in environment variables');
-            process.exit(1);
-        }
         this.SECRET = process.env.JWT_SECRET;
-        console.log('AuthService initialized with JWT_SECRET:', this.SECRET ? 'Present' : 'Missing');
+        if (!this.SECRET) {
+            console.error('JWT_SECRET is not set in environment variables');
+        }
     }
 
     // Generate tokens
     generateTokens(user) {
-        console.log('Generating tokens for user:', { id: user.id, email: user.email });
-        const accessToken = jwt.sign({ id: user.id, email: user.email, role_id: user.role_id },
-            this.SECRET, { expiresIn: '24h' }
-        );
+        const payload = {
+            id: user.id,
+            email: user.email
+        };
 
-        const refreshToken = jwt.sign({ id: user.id, email: user.email, role_id: user.role_id },
-            this.SECRET, { expiresIn: '7d' }
-        );
+        const accessToken = jwt.sign(payload, this.SECRET, { expiresIn: '24h' });
+        const refreshToken = jwt.sign(payload, this.SECRET, { expiresIn: '7d' });
 
         return { accessToken, refreshToken };
     }
@@ -29,17 +26,14 @@ class AuthService {
     // Verify token
     verifyToken(token) {
         try {
-            console.log('Verifying token with SECRET:', this.SECRET ? 'Present' : 'Missing');
             const decoded = jwt.verify(token, this.SECRET);
-            console.log('Token verified successfully:', { id: decoded.id, email: decoded.email });
-            return decoded;
-        } catch (err) {
+            return { valid: true, decoded };
+        } catch (error) {
             console.error('Token verification failed:', {
-                name: err.name,
-                message: err.message,
-                stack: err.stack
+                error: error.message,
+                token: token ? 'Present' : 'Missing'
             });
-            throw err;
+            return { valid: false, error: error.message };
         }
     }
 
@@ -141,25 +135,157 @@ class AuthService {
     // Get user from token
     async getUserFromToken(token) {
         try {
-            console.log('Getting user from token');
-            const decoded = this.verifyToken(token);
-            console.log('Token decoded:', { id: decoded.id, email: decoded.email });
+            const { valid, decoded, error } = this.verifyToken(token);
 
-            const user = await db.User.findByPk(decoded.id);
-            console.log('User found:', user ? { id: user.id, email: user.email } : 'Not found');
-
-            if (!user) {
-                throw new Error('User not found');
+            if (!valid) {
+                return { user: null, error };
             }
 
-            return user;
-        } catch (err) {
-            console.error('Error in getUserFromToken:', {
-                name: err.name,
-                message: err.message,
-                stack: err.stack
+            const user = await db.User.findByPk(decoded.id, {
+                attributes: { exclude: ['password'] }
             });
-            throw err;
+
+            if (!user) {
+                return { user: null, error: 'User not found' };
+            }
+
+            return { user, error: null };
+        } catch (error) {
+            console.error('Error in getUserFromToken:', {
+                error: error.message,
+                stack: error.stack
+            });
+            return { user: null, error: error.message };
+        }
+    }
+
+    async hashPassword(password) {
+        const saltRounds = 12;
+        return await bcrypt.hash(password, saltRounds);
+    }
+
+    async comparePassword(password, hash) {
+        return await bcrypt.compare(password, hash);
+    }
+
+    extractTokenFromHeader(authHeader) {
+        if (!authHeader) return null;
+
+        const parts = authHeader.split(' ');
+        if (parts.length !== 2 || parts[0] !== 'Bearer') {
+            return null;
+        }
+
+        return parts[1];
+    }
+
+    // Middleware for JWT authentication
+    authenticateJWT(req, res, next) {
+        const authHeader = req.headers.authorization;
+        const token = this.extractTokenFromHeader(authHeader);
+
+        if (!token) {
+            return res.status(401).json({ error: 'Access token required' });
+        }
+
+        const { valid, decoded, error } = this.verifyToken(token);
+
+        if (!valid) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+
+        req.user = decoded;
+        next();
+    }
+
+    // Middleware for optional JWT authentication
+    optionalAuth(req, res, next) {
+        const authHeader = req.headers.authorization;
+        const token = this.extractTokenFromHeader(authHeader);
+
+        if (token) {
+            const { valid, decoded } = this.verifyToken(token);
+            if (valid) {
+                req.user = decoded;
+            }
+        }
+
+        next();
+    }
+
+    // Middleware for admin authentication
+    authenticateAdmin(req, res, next) {
+        const authHeader = req.headers.authorization;
+        const token = this.extractTokenFromHeader(authHeader);
+
+        if (!token) {
+            return res.status(401).json({ error: 'Access token required' });
+        }
+
+        const { valid, decoded, error } = this.verifyToken(token);
+
+        if (!valid) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+
+        // Check if user is admin
+        if (decoded.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        req.user = decoded;
+        next();
+    }
+
+    // Generate password reset token
+    generatePasswordResetToken(user) {
+        const payload = {
+            id: user.id,
+            email: user.email,
+            type: 'password_reset'
+        };
+
+        return jwt.sign(payload, this.SECRET, { expiresIn: '1h' });
+    }
+
+    // Verify password reset token
+    verifyPasswordResetToken(token) {
+        try {
+            const decoded = jwt.verify(token, this.SECRET);
+
+            if (decoded.type !== 'password_reset') {
+                return { valid: false, error: 'Invalid token type' };
+            }
+
+            return { valid: true, decoded };
+        } catch (error) {
+            return { valid: false, error: error.message };
+        }
+    }
+
+    // Generate email verification token
+    generateEmailVerificationToken(user) {
+        const payload = {
+            id: user.id,
+            email: user.email,
+            type: 'email_verification'
+        };
+
+        return jwt.sign(payload, this.SECRET, { expiresIn: '24h' });
+    }
+
+    // Verify email verification token
+    verifyEmailVerificationToken(token) {
+        try {
+            const decoded = jwt.verify(token, this.SECRET);
+
+            if (decoded.type !== 'email_verification') {
+                return { valid: false, error: 'Invalid token type' };
+            }
+
+            return { valid: true, decoded };
+        } catch (error) {
+            return { valid: false, error: error.message };
         }
     }
 }

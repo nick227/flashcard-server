@@ -1,320 +1,299 @@
-const SetValidationService = require('./SetValidationService');
-const SetQueryBuilder = require('./SetQueryBuilder');
+const { Set, Card, Tag, SetTag, User, Category, UserLike } = require('../db');
+const ValidationService = require('./ValidationService');
 const SetTransformer = require('./SetTransformer');
 const SetAccessService = require('./SetAccessService');
 
-class SetNotFoundError extends Error {
-    constructor(message = 'Set not found') {
-        super(message);
-        this.name = 'SetNotFoundError';
-        this.status = 404;
-    }
-}
-
-class SetValidationError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = 'SetValidationError';
-        this.status = 400;
-    }
-}
-
-class SetPermissionError extends Error {
-    constructor(message = 'Permission denied') {
-        super(message);
-        this.name = 'SetPermissionError';
-        this.status = 403;
-    }
-}
-
 class SetService {
-    constructor(models) {
-        this.models = models;
-        this.Set = models.Set;
-        this.Card = models.Card;
-        this.Tag = models.Tag;
-        this.User = models.User;
-        this.Category = models.Category;
-        this.queryBuilder = new SetQueryBuilder(models);
-        this.accessService = new SetAccessService(models);
+    constructor(models = null) {
+        this.validationService = new ValidationService();
+        // SetTransformer has static methods, so we don't need to instantiate it
+
+        // Initialize access service with models
+        const db = require('../db');
+        this.accessService = new SetAccessService({
+            Set: db.Set,
+            Purchase: db.Purchase,
+            Subscription: db.Subscription,
+            User: db.User
+        });
     }
 
+    /**
+     * Create a new set with cards and tags
+     */
     async createSet(setData, cards, tags) {
-        console.log('[SetService] Starting set creation:', {
-            setDataKeys: Object.keys(setData || {}),
-            cardCount: cards ? cards.length : 0,
-            tagCount: tags ? tags.length : 0
+        console.log('[SetService] createSet started...', {
+            setTitle: setData.title,
+            educatorId: setData.educator_id,
+            cardsCount: cards ? cards.length : 0,
+            tagsCount: tags ? tags.length : 0,
+            thumbnail: setData.thumbnail
         });
 
-        // Validate data
-        const errors = SetValidationService.validateSetData(setData);
-        if (errors.length > 0) {
-            console.error('[SetService] Set validation failed:', errors);
-            throw new SetValidationError(errors.join(', '));
-        }
+        const transaction = await Set.sequelize.transaction();
 
-        // Normalize category ID
-        if (setData.categoryId && !setData.category_id) {
-            setData.category_id = setData.categoryId;
-        }
-
-        // Validate cards if provided
-        if (cards && cards.length > 0) {
-            try {
-                SetValidationService.validateCards(cards);
-                console.log('[SetService] Card validation passed');
-            } catch (error) {
-                console.error('[SetService] Card validation failed:', error.message);
-                throw new SetValidationError(error.message);
-            }
-        }
-
-        // Validate tags if provided
-        if (tags) {
-            try {
-                SetValidationService.validateTags(tags);
-                console.log('[SetService] Tag validation passed');
-            } catch (error) {
-                console.error('[SetService] Tag validation failed:', error.message);
-                throw new SetValidationError(error.message);
-            }
-        }
-
-        const transaction = await this.Set.sequelize.transaction();
         try {
-            console.log('[SetService] Creating set in database');
-            // Create the set
-            const set = await this.Set.create(setData, { transaction });
-            console.log('[SetService] Set created:', { setId: set.id });
+            // Normalize field names
+            const normalizedSetData = this.normalizeSetData(setData);
+            console.log('[SetService] Set data normalized:', normalizedSetData);
 
-            // Handle tags
-            if (tags) {
-                console.log('[SetService] Processing tags:', tags);
-                await this.handleTags(set, tags);
+            // Validate inputs
+            console.log('[SetService] Validating inputs...');
+            this.validateSetInputs(normalizedSetData, cards, tags);
+            console.log('[SetService] Input validation passed');
+
+            // Create set
+            console.log('[SetService] Creating set in database...');
+            const set = await Set.create({
+                ...normalizedSetData,
+                educator_id: normalizedSetData.educator_id
+            }, { transaction });
+            console.log('[SetService] Set created successfully:', {
+                setId: set.id,
+                title: set.title
+            });
+
+            // Handle tags and cards in parallel if both exist
+            const promises = [];
+
+            if (tags && tags.length > 0) {
+                console.log('[SetService] Processing tags...', { tagsCount: tags.length });
+                promises.push(this.handleTags(set.id, tags, transaction));
             }
 
-            // Create cards
-            if (cards.length > 0) {
-                console.log('[SetService] Creating cards:', { count: cards.length });
-                await this.createCards(set, cards, transaction);
+            if (cards && cards.length > 0) {
+                console.log('[SetService] Processing cards...', { cardsCount: cards.length });
+                promises.push(this.createCards(set.id, cards, transaction));
             }
 
+            if (promises.length > 0) {
+                console.log('[SetService] Executing parallel operations...', { promisesCount: promises.length });
+                await Promise.all(promises);
+                console.log('[SetService] Parallel operations completed');
+            }
+
+            console.log('[SetService] Committing transaction...');
             await transaction.commit();
             console.log('[SetService] Transaction committed successfully');
 
-            const completeSet = await this.getCompleteSet(set.id);
-            console.log('[SetService] Set creation completed:', { setId: set.id });
-            return SetTransformer.transformSet(completeSet);
+            return set;
         } catch (error) {
-            console.error('[SetService] Error during set creation:', {
-                error: error.message,
-                stack: error.stack
-            });
+            console.error('[SetService] Error in createSet, rolling back transaction:', error);
             await transaction.rollback();
+            this.logError('createSet', error, { userId: setData.educator_id, setTitle: setData.title });
             throw error;
         }
     }
 
+    /**
+     * Update an existing set
+     */
     async updateSet(setId, setData, cards, tags) {
-        console.log('[SetService] Starting simplified set update:', {
-            setId,
-            setDataKeys: Object.keys(setData || {}),
-            cardCount: cards ? cards.length : 0
-        });
-
-        // Validate data
-        const errors = SetValidationService.validateSetData(setData);
-        if (errors.length > 0) {
-            console.error('[SetService] Set validation failed:', errors);
-            throw new SetValidationError(errors.join(', '));
-        }
+        const transaction = await Set.sequelize.transaction();
 
         try {
-            // Get the existing set
-            const set = await this.Set.findByPk(setId);
-            if (!set) {
-                throw new SetNotFoundError();
+            // Normalize field names
+            const normalizedSetData = this.normalizeSetData(setData);
+
+            // Validate inputs
+            this.validateSetInputs(normalizedSetData, cards, tags);
+
+            // Find and verify ownership
+            const existingSet = await Set.findByPk(setId, { transaction });
+            if (!existingSet) {
+                throw new Error('Set not found');
+            }
+            if (existingSet.educator_id !== normalizedSetData.educator_id) {
+                throw new Error('Unauthorized to update this set');
             }
 
-            console.log('[SetService] Found existing set:', {
-                setId: set.id,
-                currentTitle: set.title,
-                currentDescription: set.description
-            });
+            // Update set
+            await existingSet.update(normalizedSetData, { transaction });
 
-            // Simple direct update of set fields
-            console.log('[SetService] Updating set fields:', setData);
-            await set.update(setData);
-            console.log('[SetService] Set fields updated successfully');
+            // Handle tags and cards
+            const promises = [];
 
-            // Handle tags if provided
-            if (tags) {
-                console.log('[SetService] Processing tags:', tags);
-                await this.handleTags(set, tags);
+            if (tags !== undefined) {
+                promises.push(this.handleTags(setId, tags, transaction));
             }
 
-            // Simple card replacement - delete all existing, create new ones
-            if (cards.length > 0) {
-                console.log('[SetService] Replacing cards:', { count: cards.length });
-
-                // Delete existing cards
-                await this.Card.destroy({ where: { set_id: setId } });
-                console.log('[SetService] Existing cards deleted');
-
-                // Create new cards
-                const cardData = cards.map(card => ({
-                    set_id: setId,
-                    front: card.front.text || '',
-                    back: card.back.text || '',
-                    front_image: card.front.imageUrl || null,
-                    back_image: card.back.imageUrl || null,
-                    hint: card.hint || null,
-                    layout_front: card.front.layout || 'default',
-                    layout_back: card.back.layout || 'default'
-                }));
-
-                await this.Card.bulkCreate(cardData);
-                console.log('[SetService] New cards created successfully');
+            if (cards !== undefined) {
+                promises.push(this.replaceCards(setId, cards, transaction));
             }
 
-            // Get the updated set with all relations
-            const completeSet = await this.getCompleteSet(setId);
-            console.log('[SetService] Set update completed:', {
-                setId: completeSet.id,
-                finalTitle: completeSet.title,
-                finalCardCount: completeSet.cards ? completeSet.cards.length : 0
-            });
+            if (promises.length > 0) {
+                await Promise.all(promises);
+            }
 
-            return SetTransformer.transformSet(completeSet);
+            await transaction.commit();
+            return existingSet;
         } catch (error) {
-            console.error('[SetService] Error during set update:', {
-                error: error.message,
-                stack: error.stack
-            });
+            await transaction.rollback();
+            this.logError('updateSet', error, { setId, userId: setData.educator_id });
             throw error;
         }
     }
 
+    /**
+     * Delete a set and all related data
+     */
     async deleteSet(setId) {
-        const set = await this.Set.findByPk(setId);
-        if (!set) {
-            throw new SetNotFoundError();
-        }
+        const transaction = await Set.sequelize.transaction();
 
-        // Delete the set (this will cascade delete cards)
-        await set.destroy();
-    }
-
-    async getSets(options) {
-        const queryOptions = this.queryBuilder.buildListQuery(options);
-        const countOptions = this.queryBuilder.buildCountQuery(options.category);
-
-        const [items, total] = await Promise.all([
-            this.Set.findAll(queryOptions),
-            this.Set.count(countOptions)
-        ]);
-
-        const pagination = {
-            total,
-            page: options.page,
-            limit: options.limit,
-            hasMore: (options.page - 1) * options.limit + items.length < total
-        };
-
-        return SetTransformer.transformSetList(items, pagination);
-    }
-
-    async getSet(setId, userId = null, preRetrievedSet = null) {
-        // Use pre-retrieved set if provided, otherwise fetch it
-        const set = preRetrievedSet || await this.Set.findByPk(setId, {
-            include: [{
-                    model: this.Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: this.User,
-                    as: 'educator',
-                    attributes: ['id', 'name', 'email']
-                },
-                {
-                    model: this.Card,
-                    as: 'cards',
-                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
-                    required: false,
-                    raw: false // Ensure we get model instances
-                },
-                {
-                    model: this.Tag,
-                    as: 'tags',
-                    through: { attributes: [] },
-                    attributes: ['id', 'name']
-                }
-            ]
-        });
-
-        if (!set) {
-            throw new SetNotFoundError();
-        }
-
-        // Check access before returning the set
-        const accessResult = await this.accessService.checkAccess(setId, userId);
-
-        if (!accessResult.hasAccess) {
-            return {
-                ...SetTransformer.transformSet(set),
-                access: accessResult
-            };
-        }
-
-        // Transform the cards to include image URLs
-        if (set.cards) {
-            set.cards = set.cards.map(card => ({
-                id: card.id, // Keep as number to match frontend Card type
-                title: card.title || '',
-                description: card.description || '',
-                category: card.category || '',
-                tags: card.tags || [],
-                front: {
-                    text: card.front || '',
-                    imageUrl: card.front_image || null,
-                    layout: card.layout_front || 'default'
-                },
-                back: {
-                    text: card.back || '',
-                    imageUrl: card.back_image || null,
-                    layout: card.layout_back || 'default'
-                },
-                hint: card.hint || null,
-                createdAt: card.createdAt || new Date(),
-                updatedAt: card.updatedAt || new Date(),
-                lastReviewedAt: card.lastReviewedAt || null,
-                reviewCount: card.reviewCount || 0,
-                difficulty: card.difficulty || 0,
-                nextReviewDate: card.nextReviewDate || null,
-                isArchived: card.isArchived || false,
-                isPublic: card.isPublic || false,
-                userId: card.userId || '',
-                deckId: card.deckId || ''
-            }));
-        }
-
-        return SetTransformer.transformSet(set);
-    }
-
-    async toggleHidden(setId) {
-        const set = await this.Set.findByPk(setId);
-        if (!set) {
-            throw new SetNotFoundError();
-        }
-        await set.update({ hidden: !set.hidden });
-        return this.getCompleteSet(setId);
-    }
-
-    async toggleLike(setId, userId) {
-        const transaction = await this.models.UserLike.sequelize.transaction();
         try {
-            const existingLike = await this.models.UserLike.findOne({
+            // Find the set
+            const set = await Set.findByPk(setId, { transaction });
+            if (!set) {
+                throw new Error('Set not found');
+            }
+
+            // Delete related data in parallel
+            await Promise.all([
+                Card.destroy({ where: { set_id: setId }, transaction }),
+                SetTag.destroy({ where: { set_id: setId }, transaction }),
+                UserLike.destroy({ where: { set_id: setId }, transaction })
+            ]);
+
+            // Delete the set
+            await set.destroy({ transaction });
+            await transaction.commit();
+
+            return true;
+        } catch (error) {
+            await transaction.rollback();
+            this.logError('deleteSet', error, { setId });
+            throw error;
+        }
+    }
+
+    /**
+     * Get a single set with all related data
+     */
+    async getSet(setId, userId = null, existingSet = null) {
+        try {
+            let set = existingSet;
+
+            if (!set) {
+                set = await Set.findByPk(setId, {
+                    include: [{
+                            model: User,
+                            as: 'educator',
+                            attributes: ['id', 'name', 'email', 'image']
+                        },
+                        {
+                            model: Category,
+                            attributes: ['id', 'name']
+                        },
+                        {
+                            model: Card,
+                            attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back']
+                        },
+                        {
+                            model: Tag,
+                            through: { attributes: [] },
+                            attributes: ['id', 'name']
+                        }
+                    ]
+                });
+            }
+
+            if (!set) {
+                throw new Error('Set not found');
+            }
+
+            return SetTransformer.transformSet(set, userId);
+        } catch (error) {
+            this.logError('getSet', error, { setId, userId });
+            throw error;
+        }
+    }
+
+    /**
+     * Get sets with pagination and filtering
+     */
+    async getSets(options = {}) {
+        try {
+            const {
+                page = 1,
+                    limit = 10,
+                    category = null,
+                    search = null,
+                    userId = null,
+                    includePrivate = false,
+                    educatorId = null
+            } = options;
+
+            const where = this.buildWhereClause({ category, search, includePrivate, educatorId });
+            const offset = (page - 1) * limit;
+
+            const sets = await Set.findAndCountAll({
+                where,
+                include: [{
+                        model: User,
+                        as: 'educator',
+                        attributes: ['id', 'name', 'email', 'image']
+                    },
+                    {
+                        model: Category,
+                        attributes: ['id', 'name']
+                    },
+                    {
+                        model: Tag,
+                        through: { attributes: [] },
+                        attributes: ['id', 'name']
+                    }
+                ],
+                limit,
+                offset,
+                order: [
+                    ['created_at', 'DESC']
+                ]
+            });
+
+            return {
+                sets: sets.rows.map(set => SetTransformer.transformSet(set, userId)),
+                total: sets.count,
+                page,
+                limit,
+                totalPages: Math.ceil(sets.count / limit)
+            };
+        } catch (error) {
+            this.logError('getSets', error, { options });
+            throw error;
+        }
+    }
+
+    /**
+     * Toggle set visibility
+     */
+    async toggleHidden(setId) {
+        const transaction = await Set.sequelize.transaction();
+
+        try {
+            const set = await Set.findByPk(setId, { transaction });
+            if (!set) {
+                throw new Error('Set not found');
+            }
+
+            await set.update({ hidden: !set.hidden }, { transaction });
+            await transaction.commit();
+
+            return set;
+        } catch (error) {
+            await transaction.rollback();
+            this.logError('toggleHidden', error, { setId });
+            throw error;
+        }
+    }
+
+    /**
+     * Toggle like status for a set
+     */
+    async toggleLike(setId, userId) {
+        const transaction = await Set.sequelize.transaction();
+
+        try {
+            const existingLike = await UserLike.findOne({
                 where: { set_id: setId, user_id: userId },
                 transaction
             });
@@ -324,7 +303,7 @@ class SetService {
                 await transaction.commit();
                 return { liked: false };
             } else {
-                await this.models.UserLike.create({
+                await UserLike.create({
                     set_id: setId,
                     user_id: userId
                 }, { transaction });
@@ -333,169 +312,248 @@ class SetService {
             }
         } catch (error) {
             await transaction.rollback();
+            this.logError('toggleLike', error, { setId, userId });
             throw error;
         }
     }
 
+    /**
+     * Get likes count for a set
+     */
     async getLikesCount(setId) {
-        return this.models.UserLike.count({
-            where: { set_id: setId }
-        });
+        try {
+            return await UserLike.count({
+                where: { set_id: setId }
+            });
+        } catch (error) {
+            this.logError('getLikesCount', error, { setId });
+            throw error;
+        }
     }
 
+    /**
+     * Get basic set info by ID
+     */
     async getSetById(setId) {
-        return this.Set.findByPk(setId);
+        try {
+            return await Set.findByPk(setId);
+        } catch (error) {
+            this.logError('getSetById', error, { setId });
+            throw error;
+        }
     }
 
     // Private helper methods
-    async handleTags(set, tagNames, transaction = null) {
-        console.log('[SetService] Handling tags for set:', {
-            setId: set.id,
-            tagNames,
-            tagNamesType: typeof tagNames,
-            isArray: Array.isArray(tagNames)
-        });
 
-        if (!Array.isArray(tagNames)) {
-            console.error('[SetService] Invalid tagNames:', tagNames);
-            throw new Error('Tags must be an array');
+    /**
+     * Validate set inputs
+     */
+    validateSetInputs(setData, cards, tags) {
+        const errors = this.validationService.validateSet(setData);
+        if (errors.length > 0) {
+            throw new Error(`Set validation failed: ${errors.join(', ')}`);
         }
 
-        const tags = await Promise.all(
-            tagNames.map(async(name) => {
-                if (!name || typeof name !== 'string') {
-                    console.error('[SetService] Invalid tag name:', name);
-                    throw new Error('Invalid tag name');
-                }
-                const trimmedName = name.trim();
-                if (!trimmedName) {
-                    console.error('[SetService] Empty tag name after trim');
-                    throw new Error('Tag name cannot be empty');
-                }
-                console.log('[SetService] Finding or creating tag:', trimmedName);
-                const [tag] = await this.Tag.findOrCreate({
-                    where: { name: trimmedName },
-                    ...(transaction && { transaction })
-                });
-                return tag;
-            })
-        );
-
-        console.log('[SetService] Setting tags for set:', {
-            setId: set.id,
-            tagCount: tags.length,
-            tagIds: tags.map(t => t.id)
-        });
-
-        await set.setTags(tags, {...(transaction && { transaction }) });
-    }
-
-    async createCards(set, cards, transaction) {
-        console.log('[SetService] Starting card creation:', {
-            setId: set.id,
-            cardCount: cards.length
-        });
-
-        await Promise.all(
-            cards.map(async(card, index) => {
-                console.log(`[SetService] Creating card ${index + 1}:`, {
-                    hasFrontImage: !!card.front.imageUrl,
-                    hasBackImage: !!card.back.imageUrl,
-                    frontImageType: typeof card.front.imageUrl,
-                    backImageType: typeof card.back.imageUrl
-                });
-
-                const cardData = {
-                    front: card.front.text || '',
-                    back: card.back.text || '',
-                    front_image: card.front.imageUrl || null,
-                    back_image: card.back.imageUrl || null,
-                    hint: card.hint || null,
-                    set_id: set.id,
-                    layout_front: card.front.layout || 'default',
-                    layout_back: card.back.layout || 'default'
-                };
-
-                console.log(`[SetService] Card ${index + 1} data:`, {
-                    frontLength: cardData.front.length,
-                    backLength: cardData.back.length,
-                    frontImage: cardData.front_image,
-                    backImage: cardData.back_image
-                });
-
-                const createdCard = await this.Card.create(cardData, { transaction });
-                console.log(`[SetService] Card ${index + 1} created:`, { cardId: createdCard.id });
-                return createdCard;
-            })
-        );
-
-        console.log('[SetService] All cards created successfully');
-    }
-
-    async getCompleteSet(setId) {
-        const set = await this.Set.findByPk(setId, {
-            include: [{
-                    model: this.Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: this.User,
-                    as: 'educator',
-                    attributes: ['id', 'name', 'email']
-                },
-                {
-                    model: this.Card,
-                    as: 'cards',
-                    attributes: ['id', 'set_id', 'front', 'back', 'hint', 'front_image', 'back_image', 'layout_front', 'layout_back'],
-                    required: false
-                },
-                {
-                    model: this.Tag,
-                    as: 'tags',
-                    through: { attributes: [] },
-                    attributes: ['id', 'name']
-                }
-            ]
-        });
-
-        if (!set) {
-            throw new SetNotFoundError();
+        if (cards && cards.length > 0) {
+            this.validationService.validateCards(cards);
         }
 
-        // Transform cards to include image URLs in the front/back objects
-        if (set.cards) {
-            set.cards = set.cards.map(card => ({
-                id: card.id, // Keep as number to match frontend Card type
-                title: card.title || '',
-                description: card.description || '',
-                category: card.category || '',
-                tags: card.tags || [],
-                front: {
-                    text: card.front || '',
-                    imageUrl: card.front_image || null,
-                    layout: card.layout_front || 'default'
-                },
-                back: {
-                    text: card.back || '',
-                    imageUrl: card.back_image || null,
-                    layout: card.layout_back || 'default'
-                },
+        if (tags && tags.length > 0) {
+            this.validationService.validateTags(tags);
+        }
+    }
+
+    /**
+     * Handle tags efficiently with bulk operations
+     */
+    async handleTags(setId, tagNames, transaction) {
+        if (!Array.isArray(tagNames) || tagNames.length === 0) {
+            return;
+        }
+
+        // Clean and normalize tag names
+        const validTags = tagNames
+            .filter(name => typeof name === 'string' && name.trim())
+            .map(name => name.trim().toLowerCase());
+
+        if (validTags.length === 0) {
+            return;
+        }
+
+        // Remove existing tags
+        await SetTag.destroy({ where: { set_id: setId }, transaction });
+
+        // Find or create tags in bulk
+        const tagPromises = validTags.map(name =>
+            Tag.findOrCreate({ where: { name }, transaction })
+        );
+        const tagResults = await Promise.all(tagPromises);
+        const tags = tagResults.map(([tag]) => tag);
+
+        // Create associations in bulk
+        const setTagData = tags.map(tag => ({
+            set_id: setId,
+            tag_id: tag.id
+        }));
+
+        if (setTagData.length > 0) {
+            await SetTag.bulkCreate(setTagData, { transaction });
+        }
+    }
+
+    /**
+     * Create cards efficiently
+     */
+    async createCards(setId, cards, transaction) {
+        console.log('[SetService] createCards started...', {
+            setId,
+            cardsCount: cards.length
+        });
+
+        if (!Array.isArray(cards) || cards.length === 0) {
+            console.log('[SetService] No cards to create');
+            return;
+        }
+
+        // Validate all cards first
+        console.log('[SetService] Validating cards...');
+        cards.forEach((card, index) => {
+            try {
+                this.validationService.validateCard(card);
+                console.log(`[SetService] Card ${index + 1} validation passed`);
+            } catch (error) {
+                console.error(`[SetService] Card ${index + 1} validation failed:`, error.message);
+                throw new Error(`Card ${index + 1}: ${error.message}`);
+            }
+        });
+
+        // Prepare card data for bulk creation
+        console.log('[SetService] Preparing card data for bulk creation...');
+        const cardData = cards.map((card, index) => {
+            const cardRecord = {
+                set_id: setId,
+                front: card.front.text || '',
+                back: card.back.text || '',
                 hint: card.hint || null,
-                createdAt: card.createdAt || new Date(),
-                updatedAt: card.updatedAt || new Date(),
-                lastReviewedAt: card.lastReviewedAt || null,
-                reviewCount: card.reviewCount || 0,
-                difficulty: card.difficulty || 0,
-                nextReviewDate: card.nextReviewDate || null,
-                isArchived: card.isArchived || false,
-                isPublic: card.isPublic || false,
-                userId: card.userId || '',
-                deckId: card.deckId || ''
-            }));
+                front_image: card.front.imageUrl || null,
+                back_image: card.back.imageUrl || null,
+                layout_front: card.front.layout || 'text',
+                layout_back: card.back.layout || 'text'
+            };
+
+            console.log(`[SetService] Card ${index + 1} data prepared:`, {
+                hasFrontText: !!cardRecord.front,
+                hasBackText: !!cardRecord.back,
+                hasFrontImage: !!cardRecord.front_image,
+                hasBackImage: !!cardRecord.back_image,
+                frontLayout: cardRecord.layout_front,
+                backLayout: cardRecord.layout_back
+            });
+
+            return cardRecord;
+        });
+
+        console.log('[SetService] Creating cards in database...');
+        const createdCards = await Card.bulkCreate(cardData, { transaction });
+        console.log('[SetService] Cards created successfully:', {
+            createdCount: createdCards.length
+        });
+    }
+
+    /**
+     * Replace all cards for a set
+     */
+    async replaceCards(setId, cards, transaction) {
+        // Delete existing cards
+        await Card.destroy({ where: { set_id: setId }, transaction });
+
+        // Create new cards if provided
+        if (cards && cards.length > 0) {
+            await this.createCards(setId, cards, transaction);
+        }
+    }
+
+    /**
+     * Build where clause for filtering sets
+     */
+    buildWhereClause({ category, search, includePrivate, educatorId }) {
+        const where = {};
+
+        if (category) {
+            where.category_id = category;
         }
 
-        return set;
+        if (search) {
+            where[Set.sequelize.Op.or] = [{
+                    title: {
+                        [Set.sequelize.Op.iLike]: `%${search}%`
+                    }
+                },
+                {
+                    description: {
+                        [Set.sequelize.Op.iLike]: `%${search}%`
+                    }
+                }
+            ];
+        }
+
+        if (!includePrivate) {
+            where.hidden = false;
+        }
+
+        if (educatorId) {
+            where.educator_id = educatorId;
+        }
+
+        return where;
+    }
+
+    /**
+     * Consistent error logging
+     */
+    logError(method, error, context = {}) {
+        console.error(`[SetService] ${method} error:`, {
+            message: error.message,
+            stack: error.stack,
+            ...context,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    /**
+     * Normalize field names from camelCase to snake_case for database
+     */
+    normalizeSetData(setData) {
+        const normalizedData = {};
+
+        // Handle specific field mappings
+        if (setData.categoryId !== undefined) {
+            normalizedData.category_id = setData.categoryId;
+        }
+        if (setData.category_id !== undefined) {
+            normalizedData.category_id = setData.category_id;
+        }
+
+        if (setData.isSubscriberOnly !== undefined) {
+            normalizedData.is_subscriber_only = setData.isSubscriberOnly;
+        }
+        if (setData.is_subscriber_only !== undefined) {
+            normalizedData.is_subscriber_only = setData.is_subscriber_only;
+        }
+
+        if (setData.isPublic !== undefined) {
+            normalizedData.hidden = !setData.isPublic; // Invert for database
+        }
+
+        // Copy other fields as-is
+        if (setData.title !== undefined) normalizedData.title = setData.title;
+        if (setData.description !== undefined) normalizedData.description = setData.description;
+        if (setData.price !== undefined) normalizedData.price = setData.price;
+        if (setData.thumbnail !== undefined) normalizedData.thumbnail = setData.thumbnail;
+        if (setData.educator_id !== undefined) normalizedData.educator_id = setData.educator_id;
+        if (setData.hidden !== undefined) normalizedData.hidden = setData.hidden;
+
+        return normalizedData;
     }
 }
 

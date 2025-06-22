@@ -84,7 +84,7 @@ class CardsController extends ApiController {
                     { width: 800, height: 600, crop: 'fill', gravity: 'center' },
                     { quality: 'auto', fetch_format: 'auto' }
                 ]
-            }, this.model.sequelize.models)
+            })
 
             // Update card with new image URL
             const updateData = {

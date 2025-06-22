@@ -12,13 +12,6 @@ const router = express.Router();
 
 // Add route logging middleware
 router.use((req, res, next) => {
-    console.log('Auth route - Request received:', {
-        method: req.method,
-        url: req.url,
-        contentType: req.headers['content-type'],
-        body: req.body,
-        headers: req.headers
-    });
     next();
 });
 
@@ -29,8 +22,6 @@ router.use((req, res, next) => {
 // #swagger.responses[201] = { description: 'User registered successfully', schema: { $ref: '#/definitions/User' } }
 // #swagger.responses[400] = { description: 'Invalid input data' }
 router.post('/register', (req, res) => {
-    console.log('Register request body:', req.body);
-    console.log('Register request headers:', req.headers);
     authController.register(req, res);
 });
 
@@ -92,7 +83,12 @@ router.post('/reset-password', (req, res) => authController.resetPassword(req, r
 // #swagger.responses[401] = { description: 'Unauthorized' }
 router.get('/me', jwtAuth, async(req, res) => {
     try {
-        const user = await authService.getUserFromToken(req.headers.authorization.split(' ')[1]);
+        const { user, error } = await authService.getUserFromToken(req.headers.authorization.split(' ')[1]);
+
+        if (error || !user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
         const userRole = await db.UserRole.findByPk(user.role_id);
         const role = userRole ? userRole.name : null;
 

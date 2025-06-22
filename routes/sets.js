@@ -109,18 +109,15 @@ router.get('/:id/likes/user', jwtAuth, setsController.getUserLikeStatus.bind(set
 router.post('/',
     jwtAuth,
     (req, res, next) => {
-        console.log('[Sets Routes] POST /sets - Applying image upload limiter');
         next();
     },
     imageUploadLimiter,
     (req, res, next) => {
-        console.log('[Sets Routes] POST /sets - Applying upload middleware');
         next();
     },
     uploadMiddleware.uploadMultiple(),
     uploadMiddleware.handleMulterError,
     (req, res, next) => {
-        console.log('[Sets Routes] POST /sets - Upload middleware completed, calling controller');
         next();
     },
     setsController.create.bind(setsController)
@@ -130,18 +127,15 @@ router.patch('/:id',
     jwtAuth,
     requireOwnership('id', 'set'),
     (req, res, next) => {
-        console.log('[Sets Routes] PATCH /sets/:id - Applying image upload limiter');
         next();
     },
     imageUploadLimiter,
     (req, res, next) => {
-        console.log('[Sets Routes] PATCH /sets/:id - Applying upload middleware');
         next();
     },
     uploadMiddleware.uploadMultiple(),
     uploadMiddleware.handleMulterError,
     (req, res, next) => {
-        console.log('[Sets Routes] PATCH /sets/:id - Upload middleware completed, calling controller');
         next();
     },
     setsController.update.bind(setsController)

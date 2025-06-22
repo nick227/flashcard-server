@@ -1,250 +1,212 @@
-const cloudinary = require('../config/cloudinary')
+const cloudinary = require('../config/cloudinary');
+const { CloudinaryRecord } = require('../db/models/cloudinary');
 
 class CloudinaryService {
-    static async uploadImage(imageBuffer, options = {}) {
-        console.log('[CloudinaryService] Starting image upload:', {
-            bufferSize: imageBuffer.length,
-            options: options
-        });
-
-        const defaultOptions = {
-            resource_type: 'image',
-            format: 'jpg',
-            quality: 'auto',
-            fetch_format: 'auto',
-            secure: true // Force HTTPS
-        }
-
-        const startTime = Date.now();
-
-        return new Promise((resolve, reject) => {
-            cloudinary.uploader.upload_stream({
-                ...defaultOptions,
-                ...options
-            }, (error, result) => {
-                const duration = Date.now() - startTime;
-
-                if (error) {
-                    console.error('[CloudinaryService] Upload failed:', {
-                        error: error.message,
-                        duration: `${duration}ms`,
-                        options: options
-                    });
-                    reject(new Error('Failed to upload image to Cloudinary'))
-                } else {
-                    console.log('[CloudinaryService] Upload successful:', {
-                        publicId: result.public_id,
-                        url: result.secure_url,
-                        size: result.bytes,
-                        format: result.format,
-                        dimensions: `${result.width}x${result.height}`,
-                        duration: `${duration}ms`,
-                        folder: result.folder
-                    });
-
-                    // Ensure URL is HTTPS
-                    if (result.secure_url) {
-                        result.secure_url = result.secure_url.replace('http://', 'https://')
-                    }
-                    resolve(result)
-                }
-            }).end(imageBuffer)
-        })
-    }
-
-    static async deleteImage(publicId) {
-        if (!publicId) {
-            console.log('[CloudinaryService] No public ID provided for deletion');
-            return;
-        }
-
-        console.log('[CloudinaryService] Starting image deletion:', {
-            publicId: publicId
-        });
-
-        const startTime = Date.now();
-
-        return new Promise((resolve, reject) => {
-            cloudinary.uploader.destroy(publicId, (error, result) => {
-                const duration = Date.now() - startTime;
-
-                if (error) {
-                    console.error('[CloudinaryService] Delete failed:', {
-                        publicId: publicId,
-                        error: error.message,
-                        duration: `${duration}ms`
-                    });
-                    reject(new Error('Failed to delete image from Cloudinary'))
-                } else {
-                    console.log('[CloudinaryService] Delete successful:', {
-                        publicId: publicId,
-                        result: result.result,
-                        duration: `${duration}ms`
-                    });
-                    resolve(result)
-                }
-            })
-        })
-    }
-
-    /**
-     * Upload image and save metadata to database
-     * @param {Buffer} imageBuffer - Image buffer
-     * @param {Object} options - Upload options
-     * @param {Object} db - Database models
-     * @returns {Promise<Object>} Upload result with database record
-     */
-    static async uploadAndSave(imageBuffer, options = {}, db) {
-        console.log('[CloudinaryService] Starting uploadAndSave operation:', {
-            bufferSize: imageBuffer.length,
-            options: options,
-            hasDb: !!db
+    static async uploadImage(file, options = {}) {
+        console.log('[CloudinaryService] uploadImage called...', {
+            fileType: typeof file,
+            isBuffer: Buffer.isBuffer(file),
+            hasPath: file && file.path,
+            options: {
+                folder: options.folder || 'flashcards',
+                transformation: options.transformation
+            }
         });
 
         try {
+            let uploadOptions = {
+                folder: options.folder || 'flashcards',
+                resource_type: 'auto',
+                transformation: options.transformation || [
+                    { quality: 'auto:good' },
+                    { fetch_format: 'auto' }
+                ]
+            };
+
+            console.log('[CloudinaryService] Upload options configured:', uploadOptions);
+
+            let result;
+
+            // Handle different file input types
+            if (Buffer.isBuffer(file)) {
+                console.log('[CloudinaryService] Processing buffer upload...', {
+                    bufferSize: file.length
+                });
+                // File is a buffer (from multer memoryStorage)
+                // Use upload_stream for buffer uploads
+                result = await new Promise((resolve, reject) => {
+                    const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+                        if (error) {
+                            console.error('[CloudinaryService] Upload stream error:', error);
+                            reject(error);
+                        } else {
+                            console.log('[CloudinaryService] Upload stream success:', {
+                                publicId: result.public_id,
+                                secureUrl: result.secure_url,
+                                size: result.bytes
+                            });
+                            resolve(result);
+                        }
+                    });
+                    uploadStream.end(file);
+                });
+            } else if (typeof file === 'string') {
+                console.log('[CloudinaryService] Processing string path upload...', { path: file });
+                // File is a path string
+                result = await cloudinary.uploader.upload(file, uploadOptions);
+            } else if (file && file.path) {
+                console.log('[CloudinaryService] Processing file object upload...', { path: file.path });
+                // File is an object with path property
+                result = await cloudinary.uploader.upload(file.path, uploadOptions);
+            } else {
+                console.error('[CloudinaryService] Invalid file input type:', typeof file);
+                throw new Error('Invalid file input. Expected buffer, string path, or file object with path.');
+            }
+
+            console.log('[CloudinaryService] Upload completed successfully:', {
+                publicId: result.public_id,
+                secureUrl: result.secure_url,
+                width: result.width,
+                height: result.height,
+                format: result.format,
+                size: result.bytes
+            });
+
+            return {
+                publicId: result.public_id,
+                secure_url: result.secure_url,
+                url: result.secure_url,
+                width: result.width,
+                height: result.height,
+                format: result.format,
+                size: result.bytes
+            };
+        } catch (error) {
+            console.error('[CloudinaryService] Upload failed:', {
+                error: error.message,
+                stack: error.stack,
+                folder: options.folder || 'flashcards'
+            });
+            throw error;
+        }
+    }
+
+    static async deleteImage(publicId) {
+        try {
+            if (!publicId) {
+                return { success: false, message: 'No public ID provided' };
+            }
+
+            const result = await cloudinary.uploader.destroy(publicId);
+
+            return {
+                success: result.result === 'ok',
+                message: result.result
+            };
+        } catch (error) {
+            console.error('[CloudinaryService] Delete failed:', {
+                error: error.message,
+                publicId
+            });
+            throw error;
+        }
+    }
+
+    static async uploadAndSave(file, options = {}) {
+        try {
             // Upload to Cloudinary
-            const uploadResult = await this.uploadImage(imageBuffer, options);
+            const uploadResult = await this.uploadImage(file, options);
 
-            console.log('[CloudinaryService] Upload completed, saving to database:', {
-                publicId: uploadResult.public_id,
-                url: uploadResult.secure_url
-            });
-
-            // Save metadata to database
-            const cloudinaryRecord = await db.Cloudinary.create({
-                public_id: uploadResult.public_id,
-                secure_url: uploadResult.secure_url,
-                resource_type: uploadResult.resource_type || 'image',
-                format: uploadResult.format,
-                width: uploadResult.width,
-                height: uploadResult.height,
-                bytes: uploadResult.bytes,
-                folder: uploadResult.folder,
-                original_filename: uploadResult.original_filename
-            });
-
-            console.log('[CloudinaryService] Database record created:', {
-                id: cloudinaryRecord.id,
-                publicId: cloudinaryRecord.public_id
+            // Save record to database
+            const record = await CloudinaryRecord.create({
+                publicId: uploadResult.publicId,
+                url: uploadResult.url,
+                folder: options.folder || 'flashcards',
+                userId: options.userId || null,
+                metadata: {
+                    width: uploadResult.width,
+                    height: uploadResult.height,
+                    format: uploadResult.format,
+                    size: uploadResult.size
+                }
             });
 
             return {
                 ...uploadResult,
-                dbRecord: cloudinaryRecord
-            }
+                recordId: record.id
+            };
         } catch (error) {
             console.error('[CloudinaryService] uploadAndSave failed:', {
                 error: error.message,
-                stack: error.stack
+                folder: options.folder || 'flashcards',
+                userId: options.userId || null
             });
-            throw error
+            throw error;
         }
     }
 
-    /**
-     * Delete image from Cloudinary and remove from database
-     * @param {string} publicId - Cloudinary public ID
-     * @param {Object} db - Database models
-     * @returns {Promise<Object>} Delete result
-     */
-    static async deleteAndRemove(publicId, db) {
-        console.log('[CloudinaryService] Starting deleteAndRemove operation:', {
-            publicId: publicId,
-            hasDb: !!db
-        });
-
+    static async deleteAndRemove(publicId) {
         try {
             // Delete from Cloudinary
             const deleteResult = await this.deleteImage(publicId);
 
-            console.log('[CloudinaryService] Cloudinary deletion completed, removing from database');
+            if (deleteResult.success) {
+                // Remove from database
+                const deletedCount = await CloudinaryRecord.destroy({
+                    where: { publicId }
+                });
 
-            // Remove from database
-            const deletedCount = await db.Cloudinary.destroy({
-                where: { public_id: publicId }
-            });
+                return {
+                    success: true,
+                    cloudinaryDeleted: true,
+                    databaseDeleted: deletedCount > 0
+                };
+            }
 
-            console.log('[CloudinaryService] Database record removed:', {
-                deletedCount: deletedCount,
-                publicId: publicId
-            });
-
-            return deleteResult
+            return deleteResult;
         } catch (error) {
             console.error('[CloudinaryService] deleteAndRemove failed:', {
-                publicId: publicId,
                 error: error.message,
-                stack: error.stack
+                publicId
             });
-            throw error
+            throw error;
         }
     }
 
-    /**
-     * Find Cloudinary record by public ID
-     * @param {string} publicId - Cloudinary public ID
-     * @param {Object} db - Database models
-     * @returns {Promise<Object|null>} Cloudinary record
-     */
-    static async findByPublicId(publicId, db) {
-        console.log('[CloudinaryService] Finding record by public ID:', {
-            publicId: publicId
-        });
-
+    static async findByPublicId(publicId) {
         try {
-            const record = await db.Cloudinary.findOne({
-                where: { public_id: publicId }
+            const record = await CloudinaryRecord.findOne({
+                where: { publicId }
             });
 
-            console.log('[CloudinaryService] Find result:', {
-                publicId: publicId,
-                found: !!record,
-                recordId: record ? record.id : null
-            });
-
-            return record
+            return record;
         } catch (error) {
             console.error('[CloudinaryService] findByPublicId failed:', {
-                publicId: publicId,
-                error: error.message
+                error: error.message,
+                publicId
             });
-            throw error
+            throw error;
         }
     }
 
-    /**
-     * Get all Cloudinary records by folder
-     * @param {string} folder - Folder name
-     * @param {Object} db - Database models
-     * @returns {Promise<Array>} Array of Cloudinary records
-     */
-    static async findByFolder(folder, db) {
-        console.log('[CloudinaryService] Finding records by folder:', {
-            folder: folder
-        });
-
+    static async findByFolder(folder) {
         try {
-            const records = await db.Cloudinary.findAll({
-                where: { folder: folder },
+            const records = await CloudinaryRecord.findAll({
+                where: { folder },
                 order: [
-                    ['created_at', 'DESC']
+                    ['createdAt', 'DESC']
                 ]
             });
 
-            console.log('[CloudinaryService] Find by folder result:', {
-                folder: folder,
-                count: records.length
-            });
-
-            return records
+            return records;
         } catch (error) {
             console.error('[CloudinaryService] findByFolder failed:', {
-                folder: folder,
-                error: error.message
+                error: error.message,
+                folder
             });
-            throw error
+            throw error;
         }
     }
 }
 
-module.exports = CloudinaryService
+module.exports = CloudinaryService;

@@ -9,16 +9,6 @@ const uploadMiddleware = require('../middleware/upload');
 const usersController = new UsersController();
 const router = express.Router();
 
-// Add route logging middleware
-router.use((req, res, next) => {
-    console.log('Users route - Request received:', {
-        method: req.method,
-        url: req.url,
-        contentType: req.headers['content-type']
-    });
-    next();
-});
-
 // GET /users/name-exists
 // #swagger.tags = ['Users']
 // #swagger.description = 'Check if a username exists'
@@ -53,18 +43,15 @@ router.get('/', jwtAuth, (req, res) => usersController.list(req, res));
 // #swagger.responses[401] = { description: 'Unauthorized' }
 // #swagger.responses[404] = { description: 'User not found' }
 router.get('/me', jwtAuth, async(req, res) => {
-    console.log('JWT /me req.user:', req.user);
-    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-
     try {
         const db = require('../db');
         const user = await db.User.findByPk(req.user.id, {
             include: [{ model: db.UserRole, as: 'UserRole', attributes: ['name'] }]
         });
 
-        console.log('JWT /me raw user data:', user && user.toJSON());
-
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
 
         // Format user data
         const formattedUser = {
@@ -72,13 +59,12 @@ router.get('/me', jwtAuth, async(req, res) => {
             name: user.name,
             email: user.email,
             image: user.image,
-            bio: user.bio || null, // Ensure bio is included, default to null if undefined
+            bio: user.bio || null,
             role: user.UserRole ? user.UserRole.name : null,
             created_at: user.created_at,
             updated_at: user.updated_at
         };
 
-        console.log('JWT /me final response:', formattedUser);
         res.json(formattedUser);
     } catch (error) {
         console.error('Error in /me endpoint:', error);
@@ -115,65 +101,10 @@ router.post('/', jwtAuth, (req, res) => usersController.create(req, res));
 // #swagger.responses[403] = { description: 'Forbidden - Not the owner or admin' }
 // #swagger.responses[404] = { description: 'User not found' }
 router.patch('/:id',
-    (req, res, next) => {
-        console.log('Users PATCH - Before Multer:', {
-            method: req.method,
-            url: req.url,
-            contentType: req.headers['content-type'],
-            body: req.body
-        });
-        next();
-    },
     uploadMiddleware.upload('image'),
-    (req, res, next) => {
-        console.log('Users PATCH - After Multer:', {
-            method: req.method,
-            url: req.url,
-            file: req.file ? {
-                fieldname: req.file.fieldname,
-                originalname: req.file.originalname,
-                mimetype: req.file.mimetype,
-                size: req.file.size,
-                path: req.file.path
-            } : null,
-            body: req.body
-        });
-        next();
-    },
     uploadMiddleware.handleMulterError,
-    (req, res, next) => {
-        console.log('Users PATCH - Before JWT Auth:', {
-            method: req.method,
-            url: req.url,
-            contentType: req.headers['content-type']
-        });
-        next();
-    },
     jwtAuth,
-    (req, res, next) => {
-        console.log('Users PATCH - After JWT Auth:', {
-            method: req.method,
-            url: req.url,
-            user: req.user ? { id: req.user.id } : null
-        });
-        next();
-    },
     requireOwnership('id'),
-    (req, res, next) => {
-        console.log('Users PATCH - Before Controller:', {
-            method: req.method,
-            url: req.url,
-            file: req.file ? {
-                fieldname: req.file.fieldname,
-                originalname: req.file.originalname,
-                mimetype: req.file.mimetype,
-                size: req.file.size,
-                path: req.file.path
-            } : null,
-            body: req.body
-        });
-        next();
-    },
     (req, res) => usersController.update(req, res)
 );
 

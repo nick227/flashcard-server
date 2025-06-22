@@ -14,19 +14,12 @@ if (!fs.existsSync(TEMP_DIR)) {
 const multerInstance = multer({
     storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
-        console.log('[Upload Middleware] File filter check:', {
-            filename: file.originalname,
-            mimetype: file.mimetype,
-            size: file.size
-        });
 
         // Accept images only
         if (!file.mimetype.startsWith('image/')) {
-            console.log('[Upload Middleware] File rejected - not an image:', file.mimetype);
+            console.error('[Upload Middleware] File rejected - not an image:', file.mimetype);
             return cb(new Error('Only image files are allowed!'), false);
         }
-
-        console.log('[Upload Middleware] File accepted:', file.originalname);
         cb(null, true);
     },
     limits: {
@@ -37,26 +30,15 @@ const multerInstance = multer({
 
 // Process uploaded files with Cloudinary
 const processUpload = async(req, res, next) => {
-    console.log('[Upload Middleware] Processing upload request:', {
-        hasFile: !!req.file,
-        hasFiles: !!req.files,
-        fileCount: req.files ? Object.keys(req.files).length : 0,
-        bodyKeys: Object.keys(req.body || {})
-    });
 
     if (!req.files && !req.file) {
-        console.log('[Upload Middleware] No files to process');
+        console.error('[Upload Middleware] No files to process');
         return next();
     }
 
     try {
         // Handle single thumbnail upload (existing logic)
         if (req.file) {
-            console.log('[Upload Middleware] Processing thumbnail upload:', {
-                filename: req.file.originalname,
-                size: req.file.size,
-                mimetype: req.file.mimetype
-            });
 
             const uploadResult = await CloudinaryService.uploadImage(req.file.buffer, {
                 folder: 'thumbnails',
@@ -64,11 +46,6 @@ const processUpload = async(req, res, next) => {
                     { width: 800, height: 600, crop: 'fill', gravity: 'center' },
                     { quality: 'auto', fetch_format: 'auto' }
                 ]
-            });
-
-            console.log('[Upload Middleware] Thumbnail uploaded successfully:', {
-                publicId: uploadResult.public_id,
-                url: uploadResult.secure_url
             });
 
             req.cloudinaryResult = {
@@ -79,14 +56,9 @@ const processUpload = async(req, res, next) => {
 
         // Handle multiple card image uploads
         if (req.files) {
-            console.log('[Upload Middleware] Processing card image files:', {
-                fileFields: Object.keys(req.files),
-                totalFiles: Object.values(req.files).flat().length
-            });
 
             // Log details of each file
             Object.entries(req.files).forEach(([fieldName, files]) => {
-                console.log(`[Upload Middleware] Field "${fieldName}" contains ${files.length} files:`);
                 files.forEach((file, index) => {
                     console.log(`  [${index}] ${file.originalname} (${file.size} bytes, ${file.mimetype})`);
                 });
@@ -95,8 +67,6 @@ const processUpload = async(req, res, next) => {
             // Files are already in req.files, no additional processing needed
             // The controller will handle uploading these to Cloudinary
         }
-
-        console.log('[Upload Middleware] Upload processing completed successfully');
         next();
     } catch (error) {
         console.error('[Upload Middleware] Error processing upload:', error);
@@ -107,12 +77,10 @@ const processUpload = async(req, res, next) => {
 // Export middleware
 module.exports = {
     upload: (fieldName) => {
-        console.log('[Upload Middleware] Creating single upload middleware for field:', fieldName);
 
         const uploadMiddleware = multerInstance.single(fieldName);
 
         return (req, res, next) => {
-            console.log('[Upload Middleware] Single upload middleware triggered for field:', fieldName);
 
             uploadMiddleware(req, res, (err) => {
                 if (err) {
@@ -132,20 +100,16 @@ module.exports = {
                     }
                     return next(err);
                 }
-
-                console.log('[Upload Middleware] Single upload successful, processing with Cloudinary');
                 // Process the uploaded file with Cloudinary
                 processUpload(req, res, next);
             });
         };
     },
     uploadMultiple: () => {
-        console.log('[Upload Middleware] Creating multiple upload middleware');
 
         const uploadMiddleware = multerInstance.any();
 
         return (req, res, next) => {
-            console.log('[Upload Middleware] Multiple upload middleware triggered');
 
             uploadMiddleware(req, res, (err) => {
                 if (err) {
@@ -166,8 +130,6 @@ module.exports = {
                     return next(err);
                 }
 
-                console.log('[Upload Middleware] Multiple upload successful, processing with Cloudinary');
-
                 // Transform req.files from array to object grouped by fieldname
                 if (req.files && Array.isArray(req.files)) {
                     const groupedFiles = {};
@@ -178,7 +140,6 @@ module.exports = {
                         groupedFiles[file.fieldname].push(file);
                     });
                     req.files = groupedFiles;
-                    console.log('[Upload Middleware] Transformed req.files to object:', Object.keys(req.files));
                 }
 
                 // Process the uploaded files with Cloudinary
@@ -195,29 +156,29 @@ module.exports = {
 
         if (err instanceof multer.MulterError) {
             if (err.code === 'LIMIT_FILE_SIZE') {
-                console.log('[Upload Middleware] File size limit exceeded');
+                console.error('[Upload Middleware] File size limit exceeded');
                 return res.status(400).json(responseFormatter.formatError({
                     message: 'File size too large. Maximum size is 15MB.'
                 }));
             }
             if (err.code === 'LIMIT_FILE_COUNT') {
-                console.log('[Upload Middleware] File count limit exceeded');
+                console.error('[Upload Middleware] File count limit exceeded');
                 return res.status(400).json(responseFormatter.formatError({
                     message: 'Too many files. Maximum 21 files per request.'
                 }));
             }
             if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-                console.log('[Upload Middleware] Unexpected file field');
+                console.error('[Upload Middleware] Unexpected file field');
                 return res.status(400).json(responseFormatter.formatError({
                     message: 'Unexpected file field. Please check your form data.'
                 }));
             }
-            console.log('[Upload Middleware] Generic multer error');
+            console.error('[Upload Middleware] Generic multer error');
             return res.status(400).json(responseFormatter.formatError({
                 message: err.message
             }));
         } else if (err) {
-            console.log('[Upload Middleware] Non-multer error');
+            console.error('[Upload Middleware] Non-multer error');
             return res.status(400).json(responseFormatter.formatError({
                 message: err.message
             }));

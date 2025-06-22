@@ -3,7 +3,6 @@ const { Model, DataTypes } = require('sequelize');
 module.exports = (sequelize) => {
     class Purchase extends Model {
         static associate(models) {
-            console.log('Setting up Purchase model associations');
 
             // Association with User (buyer)
             Purchase.belongsTo(models.User, {
@@ -16,8 +15,6 @@ module.exports = (sequelize) => {
                 foreignKey: 'set_id',
                 as: 'set'
             });
-
-            console.log('Purchase model associations set up');
         }
     }
 

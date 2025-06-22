@@ -156,7 +156,6 @@ app.use(cors({
 
         // Check if origin is in allowed list
         if (allowedOrigins.indexOf(origin) === -1) {
-            console.warn('CORS blocked request from origin:', origin);
             return callback(new Error('Not allowed by CORS'), false);
         }
         return callback(null, true);
@@ -169,12 +168,6 @@ app.use(cors({
     preflightContinue: false,
     optionsSuccessStatus: 204
 }));
-
-// Add request logging middleware with more details
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
 
 // CSP Report endpoint
 app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
@@ -291,12 +284,6 @@ app.use('/images', express.static(path.join(__dirname, 'public/images'), {
     }
 }));
 
-// Add error handling for static files
-app.use((err, req, res, next) => {
-    console.error('Error serving static file:', err);
-    next(err);
-});
-
 // Initialize passport
 app.use(passport.initialize());
 
@@ -399,14 +386,5 @@ aiSocketService.initialize(server);
 
 // Start server
 server.listen(port, '0.0.0.0', () => {
-    console.log('NEW Server startup details:', {
-        port,
-        host: '0.0.0.0',
-        environment: process.env.NODE_ENV,
-        railwayEnvironment: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME,
-        railwayPort: process.env.RAILWAY_TCP_PROXY_PORT,
-        railwayDomain: process.env.RAILWAY_PRIVATE_DOMAIN,
-        corsOrigins: allowedOrigins
-    });
-    console.log(`Server running on port ${port}`);
+    console.log(`Server running on port ${port} in ${process.env.NODE_ENV} mode`);
 });

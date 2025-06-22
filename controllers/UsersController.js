@@ -78,8 +78,6 @@ class UsersController extends ApiController {
             const { name, bio } = req.body;
             const userId = req.user.id;
 
-            console.log('Updating user:', { userId, name, bio });
-
             // Get user with role included
             const user = await db.User.findOne({
                 where: { id: userId },
@@ -128,15 +126,12 @@ class UsersController extends ApiController {
             const updateData = {};
             if (name) updateData.name = name;
             if (bio !== undefined) {
-                console.log('Setting bio:', bio);
                 updateData.bio = bio;
             }
 
             if (Object.keys(updateData).length > 0) {
-                console.log('Updating user with data:', updateData);
                 await user.update(updateData);
                 await user.save();
-                console.log('User updated successfully');
             }
 
             // Get fresh user data
@@ -150,7 +145,6 @@ class UsersController extends ApiController {
             }
 
             const formatted = responseFormatter.formatUser(updatedUser);
-            console.log('Sending response:', formatted);
 
             res.json(formatted);
         } catch (err) {

@@ -265,7 +265,6 @@ class ApiController {
      */
     async getBatchViews(ids) {
         try {
-            console.log('Getting batch views for IDs:', ids);
 
             const views = await this.model.sequelize.models.History.findAll({
                 attributes: [
@@ -280,8 +279,6 @@ class ApiController {
                 raw: true
             });
 
-            console.log('Raw views data:', views);
-
             const result = {};
             views.forEach(view => {
                 result[view.set_id] = parseInt(view.count, 10);
@@ -294,7 +291,6 @@ class ApiController {
                 }
             });
 
-            console.log('Processed views result:', result);
             return result;
         } catch (err) {
             console.error('Error in getBatchViews:', {
