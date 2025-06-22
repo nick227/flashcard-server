@@ -83,9 +83,17 @@ class AiSetSequence {
      * @param {string} title - Set title
      * @param {string} description - Set description
      * @param {string} category - Set category
+     * @param {string} generationId - Generation ID for cancellation checking
+     * @param {Map} activeGenerations - Active generations map for cancellation checking
      * @returns {Promise<Object>} Raw card content with prompts and completion
      */
-    async generateCardContent(title, description, category) {
+    async generateCardContent(title, description, category, generationId = null, activeGenerations = null) {
+        // Check if generation has been cancelled before making API call
+        if (generationId && this.isGenerationCancelled(generationId, activeGenerations)) {
+            console.log(`Generation ${generationId} cancelled before OpenAI API call`)
+            throw new Error('Generation cancelled')
+        }
+
         const functions = FlashcardPrompts.getFunctionCallFormat()
 
         const completion = await this.client.callOpenAI(
@@ -95,6 +103,12 @@ class AiSetSequence {
                 systemPrompt: FlashcardPrompts.getSystemPrompt()
             }
         )
+
+        // Check again after API call
+        if (generationId && this.isGenerationCancelled(generationId, activeGenerations)) {
+            console.log(`Generation ${generationId} cancelled after OpenAI API call`)
+            throw new Error('Generation cancelled')
+        }
 
         const functionCall = completion.choices[0].message.function_call
         if (!functionCall || functionCall.name !== "generateCards") {
@@ -127,14 +141,28 @@ class AiSetSequence {
      * Generates and uploads a single image with queuing
      * @param {string} prompt - Image generation prompt
      * @param {number} userId - User ID for tracking
+     * @param {string} generationId - Generation ID for cancellation checking
+     * @param {Map} activeGenerations - Active generations map for cancellation checking
      * @returns {Promise<string|null>} Cloudinary URL or null if failed
      */
-    async generateAndUploadImage(prompt, userId) {
+    async generateAndUploadImage(prompt, userId, generationId = null, activeGenerations = null) {
+        // Check if generation has been cancelled before starting image generation
+        if (generationId && this.isGenerationCancelled(generationId, activeGenerations)) {
+            console.log(`Generation ${generationId} cancelled before image generation`)
+            return null
+        }
+
         const MAX_RETRIES = 1
         let retryCount = 0
 
         while (retryCount < MAX_RETRIES) {
             try {
+                // Check again before each retry
+                if (generationId && this.isGenerationCancelled(generationId, activeGenerations)) {
+                    console.log(`Generation ${generationId} cancelled during image generation retry`)
+                    return null
+                }
+
                 // Generate the image
                 const imageBuffer = await ImageService.generateImage(
                     prompt,
@@ -145,6 +173,12 @@ class AiSetSequence {
 
                 if (!imageBuffer) {
                     throw new Error('No image buffer returned')
+                }
+
+                // Check again after image generation
+                if (generationId && this.isGenerationCancelled(generationId, activeGenerations)) {
+                    console.log(`Generation ${generationId} cancelled after image generation`)
+                    return null
                 }
 
                 // Upload to Cloudinary
@@ -178,29 +212,36 @@ class AiSetSequence {
      * Processes a single card's images
      * @param {Object} card - Card content
      * @param {number} userId - User ID
+     * @param {string} generationId - Generation ID for cancellation checking
+     * @param {Map} activeGenerations - Active generations map for cancellation checking
      * @returns {Promise<Object>} Processed card with image URLs
      */
-    async processCardImages(card, userId) {
+    async processCardImages(card, userId, generationId = null, activeGenerations = null) {
         const processedCard = {
             id: Date.now() + Math.floor(Math.random() * 1000),
             front: {
                 text: card.front.text || '',
-                imageUrl: null
+                imageUrl: null,
+                layout: 'default'
             },
             back: {
                 text: card.back.text || '',
-                imageUrl: null
+                imageUrl: null,
+                layout: 'default'
             },
             hint: null,
             setId: 0
         }
 
         try {
-            // Process front image if needed
-            if (card.front.imageUrl) {
+            // Process front image if needed - check for both imageUrl and imagePrompt
+            const frontImagePrompt = card.front.imageUrl || card.front.imagePrompt
+            if (frontImagePrompt) {
                 const frontImageUrl = await this.generateAndUploadImage(
-                    card.front.imageUrl,
-                    userId
+                    frontImagePrompt,
+                    userId,
+                    generationId,
+                    activeGenerations
                 )
                 if (frontImageUrl) {
                     processedCard.front.imageUrl = frontImageUrl
@@ -213,11 +254,14 @@ class AiSetSequence {
                 }
             }
 
-            // Process back image if needed
-            if (card.back.imageUrl) {
+            // Process back image if needed - check for both imageUrl and imagePrompt
+            const backImagePrompt = card.back.imageUrl || card.back.imagePrompt
+            if (backImagePrompt) {
                 const backImageUrl = await this.generateAndUploadImage(
-                    card.back.imageUrl,
-                    userId
+                    backImagePrompt,
+                    userId,
+                    generationId,
+                    activeGenerations
                 )
                 if (backImageUrl) {
                     processedCard.back.imageUrl = backImageUrl
@@ -228,6 +272,24 @@ class AiSetSequence {
                         processedCard.back.text = 'Image generation failed'
                     }
                 }
+            }
+
+            // Determine layout based on final content (after image processing)
+            // Only set two-row if both text and image are substantial
+            const frontHasSubstantialText = processedCard.front.text &&
+                processedCard.front.text.trim().length > 10 &&
+                processedCard.front.text !== 'Image generation failed' &&
+                processedCard.front.text !== 'No content available'
+            const backHasSubstantialText = processedCard.back.text &&
+                processedCard.back.text.trim().length > 10 &&
+                processedCard.back.text !== 'Image generation failed' &&
+                processedCard.back.text !== 'No content available'
+
+            if (frontHasSubstantialText && processedCard.front.imageUrl) {
+                processedCard.front.layout = 'two-row'
+            }
+            if (backHasSubstantialText && processedCard.back.imageUrl) {
+                processedCard.back.layout = 'two-row'
             }
 
             // Validate card has content
@@ -253,45 +315,81 @@ class AiSetSequence {
     }
 
     /**
+     * Check if generation has been cancelled
+     * @param {string} generationId - The generation ID to check
+     * @param {Map} activeGenerations - The active generations map
+     * @returns {boolean} Whether the generation has been cancelled
+     */
+    isGenerationCancelled(generationId, activeGenerations) {
+        return !activeGenerations || !activeGenerations.has(generationId)
+    }
+
+    /**
      * Processes all cards with rate limiting
      * @param {Array} cards - Raw card content
      * @param {number} userId - User ID
      * @param {Socket} socket - Socket instance for progress updates
      * @param {string} generationId - Generation ID for tracking
+     * @param {Function} safeEmit - Safe emit function that checks connection status
+     * @param {Map} activeGenerations - Active generations map for cancellation checking
      * @returns {Promise<Array>} Processed cards with image URLs
      */
-    async processAllCards(cards, userId, socket, generationId) {
+    async processAllCards(cards, userId, socket, generationId, safeEmit = null, activeGenerations = null) {
         const processedCards = []
 
         // Process one card at a time to avoid rate limits
         for (let i = 0; i < cards.length; i++) {
+            // Check if generation has been cancelled
+            if (this.isGenerationCancelled(generationId, activeGenerations)) {
+                console.log(`Generation ${generationId} cancelled during card processing`)
+                return processedCards // Return what we have so far
+            }
+
             // Emit progress update before processing card
             if (socket && generationId) {
                 const progress = Math.round((i / cards.length) * 100)
-                socket.emit('generationProgress', {
+                const progressData = {
                     generationId,
                     message: `Processing card ${i + 1} of ${cards.length}...`,
                     progress,
                     totalCards: cards.length,
                     currentCard: i + 1,
                     stage: 'processing'
-                })
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'generationProgress', progressData)
+                } else {
+                    socket.emit('generationProgress', progressData)
+                }
             }
 
-            const processedCard = await this.processCardImages(cards[i], userId)
+            const processedCard = await this.processCardImages(cards[i], userId, generationId, activeGenerations)
             processedCards.push(processedCard)
+
+            // Check again after processing card
+            if (this.isGenerationCancelled(generationId, activeGenerations)) {
+                console.log(`Generation ${generationId} cancelled after processing card ${i + 1}`)
+                return processedCards // Return what we have so far
+            }
 
             // Emit card immediately after processing
             if (socket && generationId) {
                 const progress = Math.round(((i + 1) / cards.length) * 100)
-                socket.emit('cardGenerated', {
+                const cardData = {
                     generationId,
                     card: processedCard,
                     progress,
                     totalCards: cards.length,
                     currentCard: i + 1,
                     stage: 'completed'
-                })
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'cardGenerated', cardData)
+                } else {
+                    socket.emit('cardGenerated', cardData)
+                }
 
                 // Small delay to ensure client processes the card
                 await new Promise(resolve => setTimeout(resolve, 50))
@@ -314,26 +412,52 @@ class AiSetSequence {
      * @param {number} userId - User ID
      * @param {Socket} socket - Socket instance for progress updates
      * @param {string} generationId - Generation ID for tracking
+     * @param {Function} safeEmit - Safe emit function that checks connection status
+     * @param {Map} activeGenerations - Active generations map for cancellation checking
      * @returns {Promise<Object>} Generation results
      */
-    async generateSet(title, description, category, userId, socket = null, generationId = null) {
+    async generateSet(title, description, category, userId, socket = null, generationId = null, safeEmit = null, activeGenerations = null) {
         try {
             // 1. Generate card content
             const startTime = Date.now()
 
+            // Check if generation has been cancelled before starting
+            if (this.isGenerationCancelled(generationId, activeGenerations)) {
+                console.log(`Generation ${generationId} cancelled before content generation`)
+                return {
+                    success: false,
+                    error: 'Generation cancelled'
+                }
+            }
+
             // Emit initial progress
             if (socket && generationId) {
-                socket.emit('generationProgress', {
+                const initialData = {
                     generationId,
                     message: 'Generating card content with AI...',
                     progress: 0,
                     totalCards: 0,
                     stage: 'initializing'
-                })
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'generationProgress', initialData)
+                } else {
+                    socket.emit('generationProgress', initialData)
+                }
             }
 
-            const { cards, completion } = await this.generateCardContent(title, description, category)
+            const { cards, completion } = await this.generateCardContent(title, description, category, generationId, activeGenerations)
             const duration = Date.now() - startTime
+
+            // Check if generation was cancelled during content generation
+            if (this.isGenerationCancelled(generationId, activeGenerations)) {
+                console.log(`Generation ${generationId} cancelled during content generation`)
+                return {
+                    success: false,
+                    error: 'Generation cancelled'
+                }
+            }
 
             if (!cards || cards.length === 0) {
                 return {
@@ -344,17 +468,48 @@ class AiSetSequence {
 
             // Emit progress update before processing images
             if (socket && generationId) {
-                socket.emit('generationProgress', {
+                const progressData = {
                     generationId,
                     message: `Generated ${cards.length} cards, now processing images...`,
                     progress: 10,
                     totalCards: cards.length,
                     stage: 'content_generated'
-                })
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'generationProgress', progressData)
+                } else {
+                    socket.emit('generationProgress', progressData)
+                }
             }
 
             // 2. Process cards with images
-            const processedCards = await this.processAllCards(cards, userId, socket, generationId)
+            const processedCards = await this.processAllCards(cards, userId, socket, generationId, safeEmit, activeGenerations)
+
+            // Check if generation was cancelled during processing
+            if (this.isGenerationCancelled(generationId, activeGenerations)) {
+                console.log(`Generation ${generationId} cancelled during image processing`)
+                return {
+                    success: false,
+                    error: 'Generation cancelled',
+                    cards: processedCards // Return what we processed so far
+                }
+            }
+
+            // Emit final completion event
+            if (socket && generationId) {
+                const completeData = {
+                    generationId,
+                    totalCards: processedCards.length,
+                    stage: 'completed'
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'generationComplete', completeData)
+                } else {
+                    socket.emit('generationComplete', completeData)
+                }
+            }
 
             return {
                 success: true,
@@ -373,6 +528,21 @@ class AiSetSequence {
 
         } catch (error) {
             console.error('AiSetSequence.generateSet - Error:', error)
+
+            // Emit error event to client
+            if (socket && generationId) {
+                const errorData = {
+                    generationId,
+                    error: error.message || 'Failed to generate cards'
+                }
+
+                if (safeEmit) {
+                    safeEmit(socket, 'generationError', errorData)
+                } else {
+                    socket.emit('generationError', errorData)
+                }
+            }
+
             return {
                 success: false,
                 error: error.message || 'Failed to generate cards'

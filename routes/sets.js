@@ -7,6 +7,8 @@ const uploadMiddleware = require('../middleware/upload');
 const { cache } = require('../services/cache/ApicacheWrapper');
 const { setHttpCacheHeaders, CACHE_DURATIONS } = require('../services/cache/httpCacheHeaders');
 const rateLimit = require('express-rate-limit');
+const generationSessionService = require('../services/ai-tools/GenerationSessionService');
+const requireAuth = require('../middleware/requireAuth');
 
 // Create a new instance of SetsController with the required model name
 const setsController = new SetsController('Set');
@@ -155,5 +157,35 @@ router.post('/:id/remove-tag', jwtAuth, setsController.removeTag.bind(setsContro
 
 // Public route for recording views (anonymous or authenticated)
 router.post('/:id/view', setsController.addView.bind(setsController));
+
+// Get user's recent generation sessions
+router.get('/generation-sessions', requireAuth, async(req, res) => {
+    try {
+        const userId = req.user.id
+        const sessions = await generationSessionService.getUserSessions(userId, 10)
+
+        res.json({
+            success: true,
+            sessions: sessions.map(session => ({
+                id: session.id,
+                title: session.title,
+                description: session.description,
+                status: session.status,
+                cardsGenerated: session.cards_generated,
+                totalCards: session.total_cards,
+                startedAt: session.started_at,
+                completedAt: session.completed_at,
+                errorMessage: session.error_message,
+                currentOperation: session.current_operation
+            }))
+        })
+    } catch (error) {
+        console.error('Error fetching generation sessions:', error)
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch generation sessions'
+        })
+    }
+})
 
 module.exports = router;

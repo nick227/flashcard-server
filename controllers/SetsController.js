@@ -1156,10 +1156,18 @@ class SetsController extends ApiController {
 
                 if (side === 'front') {
                     if (!cards[cardIndex].front) cards[cardIndex].front = {};
-                    cards[cardIndex].front.imageUrl = result.secure_url;
+                    // Preserve existing layout and other properties
+                    cards[cardIndex].front = {
+                        ...cards[cardIndex].front,
+                        imageUrl: result.secure_url
+                    };
                 } else {
                     if (!cards[cardIndex].back) cards[cardIndex].back = {};
-                    cards[cardIndex].back.imageUrl = result.secure_url;
+                    // Preserve existing layout and other properties
+                    cards[cardIndex].back = {
+                        ...cards[cardIndex].back,
+                        imageUrl: result.secure_url
+                    };
                 }
             });
 

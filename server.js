@@ -59,8 +59,16 @@ const allowedOrigins = isProduction ? [
     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
     'https://flashcardacademy.vercel.app',
     'https://www.flashcardacademy.vercel.app',
-    'https://flashcard-client-production.vercel.app'
+    'https://flashcard-client-production.vercel.app',
+    'https://flashcard-client-3fgo3r34c-nick227s-projects.vercel.app'
 ] : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'];
+
+// Vercel preview deployment patterns
+const vercelPreviewPatterns = [
+    /^https:\/\/flashcard-client-.*-nick227s-projects\.vercel\.app$/,
+    /^https:\/\/flashcard-client-.*\.vercel\.app$/,
+    /^https:\/\/flashcard-academy-.*\.vercel\.app$/
+];
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
@@ -155,14 +163,20 @@ app.use(cors({
         if (!origin) return callback(null, true);
 
         // Check if origin is in allowed list
-        if (allowedOrigins.indexOf(origin) === -1) {
-            return callback(new Error('Not allowed by CORS'), false);
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
         }
-        return callback(null, true);
+
+        // Check if origin matches Vercel preview patterns
+        if (isProduction && vercelPreviewPatterns.some(pattern => pattern.test(origin))) {
+            return callback(null, true);
+        }
+
+        return callback(new Error('Not allowed by CORS'), false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'user-id', 'x-vercel-skip-toolbar'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     maxAge: 86400, // 24 hours
     preflightContinue: false,

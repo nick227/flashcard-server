@@ -39,10 +39,11 @@ class GenerationSessionService {
      * @param {number} userId - The user ID
      * @param {string} title - The set title
      * @param {string} description - The set description
-     * @param {string} [openai_request_id] - The OpenAI request ID (optional)
+     * @param {string} [status] - The initial status (optional)
+     * @param {string} [category] - The set category (optional)
      * @returns {Promise<GenerationSession>} The created session
      */
-    async createSession(userId, title, description, openai_request_id = 'pending') {
+    async createSession(userId, title, description, status = 'preparing', category = null) {
         try {
             const sessionId = `gen_${Date.now()}`
             const sessionData = {
@@ -50,8 +51,8 @@ class GenerationSessionService {
                 user_id: userId,
                 title,
                 description,
-                status: 'preparing',
-                openai_request_id,
+                status,
+                openai_request_id: 'pending',
                 total_cards: 10,
                 cards_generated: 0,
                 started_at: new Date()

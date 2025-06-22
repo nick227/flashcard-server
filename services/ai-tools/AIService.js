@@ -47,10 +47,19 @@ class AIService {
         }
     }
 
-    async generateCards(title, description, category, userId, socket = null, generationId = null) {
+    async generateCards(title, description, category, userId, socket = null, generationId = null, safeEmit = null, activeGenerations = null) {
         try {
             // Generate cards using AI sequence
-            const result = await this.aiSetSequence.generateSet(title, description, category, userId, socket, generationId)
+            const result = await this.aiSetSequence.generateSet(title, description, category, userId, socket, generationId, safeEmit, activeGenerations)
+
+            // Handle cancelled generations gracefully
+            if (!result.success && result.error === 'Generation cancelled') {
+                console.log(`Generation ${generationId} was cancelled - returning partial results`)
+                return {
+                    cards: result.cards || [],
+                    requestId: 'cancelled'
+                }
+            }
 
             if (!result.success) {
                 throw new Error(result.error || 'Failed to generate cards')

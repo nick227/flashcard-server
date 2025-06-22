@@ -104,7 +104,12 @@ class AISocketService {
      */
     async authenticateSocket(socket, next) {
         try {
-            const token = socket.handshake.auth.token || socket.handshake.headers.authorization.replace('Bearer ', '')
+            let token = socket.handshake.auth.token
+
+            // Fallback to authorization header if auth token not found
+            if (!token && socket.handshake.headers && socket.handshake.headers.authorization) {
+                token = socket.handshake.headers.authorization.replace('Bearer ', '')
+            }
 
             if (!token) {
                 return next(new Error('Authentication token required'))
@@ -143,7 +148,8 @@ class AISocketService {
                     'https://flashcard-client-1a6srp39d-nick227s-projects.vercel.app',
                     'https://flashcardacademy.vercel.app',
                     'https://www.flashcardacademy.vercel.app',
-                    'https://flashcard-client-production.vercel.app'
+                    'https://flashcard-client-production.vercel.app',
+                    'https://flashcard-client-3fgo3r34c-nick227s-projects.vercel.app'
                 ] : ['http://localhost:5173', 'http://127.0.0.1:5173'],
                 methods: ['GET', 'POST'],
                 credentials: true
@@ -205,85 +211,28 @@ class AISocketService {
         // Handle disconnection
         socket.on('disconnect', () => {
             this.userConnections.delete(userId)
+
+            // Check if user has active generations
+            const userActiveGenerations = this.getUserActiveGenerations(userId)
+            if (userActiveGenerations.length > 0) {
+                console.log(`User ${userId} disconnected with ${userActiveGenerations.length} active generations - cancelling to save credits`)
+
+                // Immediately cancel all active generations to prevent wasted AI credits
+                userActiveGenerations.forEach(generationId => {
+                    this.cancelGeneration(generationId, 'Client disconnected')
+                })
+            }
         })
 
-        // Handle AI generation progress updates
-        socket.on('ai_progress', (data) => {
-            this.handleAIProgress(socket, data)
+        // Handle startGeneration requests
+        socket.on('startGeneration', (data, callback) => {
+            this.handleGenerationStart(socket, data, callback)
         })
 
-        // Handle AI generation completion
-        socket.on('ai_complete', (data) => {
-            this.handleAIComplete(socket, data)
+        // Handle generateSingleCardFace requests
+        socket.on('generateSingleCardFace', (data, callback) => {
+            this.handleSingleCardFaceGeneration(socket, data, callback)
         })
-
-        // Handle AI generation errors
-        socket.on('ai_error', (data) => {
-            this.handleAIError(socket, data)
-        })
-    }
-
-    handleAIProgress(socket, data) {
-        const { userId, progress, message } = data
-        socket.to(`user_${userId}`).emit('ai_progress_update', {
-            progress,
-            message
-        })
-    }
-
-    handleAIComplete(socket, data) {
-        const { userId, result } = data
-        socket.to(`user_${userId}`).emit('ai_generation_complete', {
-            result
-        })
-    }
-
-    handleAIError(socket, data) {
-        const { userId, error } = data
-        socket.to(`user_${userId}`).emit('ai_generation_error', {
-            error
-        })
-    }
-
-    // Method to emit progress to specific user
-    emitProgress(userId, progress, message) {
-        this.io.to(`user_${userId}`).emit('ai_progress_update', {
-            progress,
-            message
-        })
-    }
-
-    // Method to emit completion to specific user
-    emitComplete(userId, result) {
-        this.io.to(`user_${userId}`).emit('ai_generation_complete', {
-            result
-        })
-    }
-
-    // Method to emit error to specific user
-    emitError(userId, error) {
-        this.io.to(`user_${userId}`).emit('ai_generation_error', {
-            error
-        })
-    }
-
-    // Get connected users count
-    getConnectedUsersCount() {
-        return this.userConnections.size
-    }
-
-    // Check if user is connected
-    isUserConnected(userId) {
-        return this.userConnections.has(userId)
-    }
-
-    // Disconnect specific user
-    disconnectUser(userId) {
-        const socket = this.userConnections.get(userId)
-        if (socket) {
-            socket.disconnect()
-            this.userConnections.delete(userId)
-        }
     }
 
     /**
@@ -297,109 +246,40 @@ class AISocketService {
             const { title, description, category, generationId } = data
             const userId = socket.user.id
 
-            // Create session first (add category if your session supports it)
+            // Validate rate limits and request before creating session
+            const now = Date.now()
+            const userLimit = this.userLimits.get(userId) || { count: 0, resetTime: now + this.RATE_LIMIT_WINDOW }
+
+            // Reset if window has passed
+            if (now > userLimit.resetTime) {
+                userLimit.count = 0
+                userLimit.resetTime = now + this.RATE_LIMIT_WINDOW
+            }
+
+            // Check if limit exceeded
+            if (userLimit.count >= this.MAX_REQUESTS) {
+                const timeLeft = Math.ceil((userLimit.resetTime - now) / (60 * 1000)) // minutes
+                throw new Error(`Rate limit exceeded. Please try again in ${timeLeft} minutes.`)
+            }
+
+            // Check concurrent generations
+            const userActiveGenerations = this.getUserActiveGenerations(userId)
+            if (userActiveGenerations.length >= this.CONCURRENT_LIMIT) {
+                throw new Error('You have too many active generations. Please wait for them to complete.')
+            }
+
+            // Validate request
+            if (!title || !description) {
+                throw new Error('Title and description are required')
+            }
+
+            // Create session first
             const session = await generationSessionService.createSession(
                 userId,
                 title,
                 description,
-                'pending',
+                'preparing',
                 category
-            )
-
-            if (!session || !session.id) {
-                throw new Error('Failed to create generation session')
-            }
-
-            // Store generation info
-            this.activeGenerations.set(generationId, {
-                userId,
-                sessionId: session.id,
-                startTime: Date.now(),
-                currentStatus: this.SESSION_STATUS.PREPARING
-            })
-
-            try {
-                // Initial status update
-                await this.updateSessionStatus(session.id, this.SESSION_STATUS.PREPARING, 'Preparing to generate cards...', {
-                    cardsGenerated: 0,
-                    totalCards: 10,
-                    user_id: userId,
-                    stage: 'initializing'
-                })
-
-                // Start generation with socket and generationId, pass category
-                const result = await AIService.generateCards(title, description, category, userId, socket, generationId)
-
-                // Update session with request ID
-                await this.updateSessionStatus(session.id, this.SESSION_STATUS.GENERATING, 'Processing generated cards...', {
-                    openai_request_id: result.requestId,
-                    cardsGenerated: 0,
-                    totalCards: result.cards.length,
-                    user_id: userId,
-                    stage: 'content_generated'
-                })
-
-                // Complete generation
-                await this.updateSessionStatus(session.id, this.SESSION_STATUS.COMPLETED,
-                    'Generation complete', {
-                        cardsGenerated: result.cards.length,
-                        totalCards: result.cards.length,
-                        stage: 'completed'
-                    })
-
-                await this.emitWithAck(socket, 'generationComplete', {
-                    generationId,
-                    totalCards: result.cards.length,
-                    stage: 'completed'
-                })
-
-                if (callback) callback(null)
-            } catch (error) {
-                await this.handleGenerationError(socket, generationId, session.id, error)
-                if (callback) callback({ message: error.message })
-            }
-        } catch (error) {
-            console.error('Generation start error:', error)
-            if (callback) callback({ message: error.message })
-        }
-    }
-
-    async validateAndCreateSession(socket, data, userId) {
-        const { title, description, generationId } = data
-
-        // Check rate limits
-        const now = Date.now()
-        const userLimit = this.userLimits.get(userId) || { count: 0, resetTime: now + this.RATE_LIMIT_WINDOW }
-
-        // Reset if window has passed
-        if (now > userLimit.resetTime) {
-            userLimit.count = 0
-            userLimit.resetTime = now + this.RATE_LIMIT_WINDOW
-        }
-
-        // Check if limit exceeded
-        if (userLimit.count >= this.MAX_REQUESTS) {
-            const timeLeft = Math.ceil((userLimit.resetTime - now) / (60 * 1000)) // minutes
-            throw new Error(`Rate limit exceeded. Please try again in ${timeLeft} minutes.`)
-        }
-
-        // Check concurrent generations
-        const userActiveGenerations = this.getUserActiveGenerations(userId)
-        if (userActiveGenerations.length >= this.CONCURRENT_LIMIT) {
-            throw new Error('You have too many active generations. Please wait for them to complete.')
-        }
-
-        // Validate request
-        if (!title || !description) {
-            throw new Error('Title and description are required')
-        }
-
-        try {
-            // Create session
-            const session = await generationSessionService.createSession(
-                userId,
-                title,
-                description
             )
 
             if (!session || !session.id) {
@@ -418,10 +298,125 @@ class AISocketService {
             userLimit.count++
                 this.userLimits.set(userId, userLimit)
 
-            return session
+            try {
+                // Initial status update
+                await this.updateSessionStatus(session.id, this.SESSION_STATUS.PREPARING, 'Preparing to generate cards...', {
+                    cardsGenerated: 0,
+                    totalCards: 10,
+                    user_id: userId,
+                    stage: 'initializing'
+                })
+
+                // Call callback immediately to indicate generation has started
+                if (callback) callback(null)
+
+                // Start generation with socket and generationId, pass category and safeEmit function
+                const result = await AIService.generateCards(
+                    title,
+                    description,
+                    category,
+                    userId,
+                    socket,
+                    generationId,
+                    this.safeEmit.bind(this),
+                    this.activeGenerations
+                )
+
+                // Check if generation was cancelled
+                if (result.requestId === 'cancelled') {
+                    console.log(`Generation ${generationId} was cancelled - updating session status`)
+                    await this.updateSessionStatus(session.id, this.SESSION_STATUS.CANCELLED, 'Generation cancelled', {
+                        cardsGenerated: result.cards.length,
+                        totalCards: result.cards.length,
+                        stage: 'cancelled'
+                    })
+                    return // Exit early, don't update to completed
+                }
+
+                // Update session with request ID
+                await this.updateSessionStatus(session.id, this.SESSION_STATUS.GENERATING, 'Processing generated cards...', {
+                    openai_request_id: result.requestId,
+                    cardsGenerated: 0,
+                    totalCards: result.cards.length,
+                    user_id: userId,
+                    stage: 'content_generated'
+                })
+
+                // Complete generation
+                await this.updateSessionStatus(session.id, this.SESSION_STATUS.COMPLETED,
+                    'Generation complete', {
+                        cardsGenerated: result.cards.length,
+                        totalCards: result.cards.length,
+                        stage: 'completed'
+                    })
+
+            } catch (error) {
+                await this.handleGenerationError(socket, generationId, session.id, error)
+                    // Don't call callback here since it was already called
+            }
         } catch (error) {
-            console.error('Session creation error:', error)
-            throw new Error('Failed to create generation session: ' + error.message)
+            console.error('Generation start error:', error)
+            if (callback) callback({ message: error.message })
+        }
+    }
+
+    /**
+     * Handle single card face generation request
+     * @param {Socket} socket - The socket instance
+     * @param {Object} data - The generation request data
+     * @param {Function} callback - The callback function
+     */
+    async handleSingleCardFaceGeneration(socket, data, callback) {
+        console.log('[AISocketService] handleSingleCardFaceGeneration called:', {
+            socketId: socket.id,
+            userId: socket.user ? socket.user.id : null,
+            data: data
+        })
+
+        try {
+            const { side, title, description, category, otherSideContent } = data
+            const userId = socket.user.id
+
+            // Validate required fields
+            if (!side || !title || !description || !category) {
+                console.warn('[AISocketService] Missing required fields:', { side, title, description, category })
+                return callback({ error: 'Missing required fields: side, title, description, and category are required' })
+            }
+
+            // Validate side parameter
+            if (!['front', 'back'].includes(side)) {
+                console.warn('[AISocketService] Invalid side parameter:', side)
+                return callback({ error: 'Invalid side parameter. Must be "front" or "back"' })
+            }
+
+            console.log('Single card face generation request:', {
+                userId,
+                side,
+                title,
+                description,
+                category,
+                hasOtherSideContent: !!otherSideContent
+            })
+
+            // Call the AI service to generate the card face
+            console.log('[AISocketService] Calling AIService.generateSingleCardFace')
+            const result = await AIService.generateSingleCardFace(
+                side,
+                title,
+                description,
+                category,
+                otherSideContent || '',
+                userId
+            )
+
+            console.log('[AISocketService] AIService returned result:', result)
+
+            // Return the generated text
+            callback({ text: result.text })
+
+        } catch (error) {
+            console.error('Single card face generation error:', error)
+            callback({ error: error.message || 'Failed to generate card face content' })
         }
     }
 
@@ -446,114 +441,21 @@ class AISocketService {
         }
     }
 
-    async emitWithAck(socket, event, data, timeout = 5000) {
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                reject(new Error(`Timeout waiting for ${event} acknowledgment`))
-            }, timeout)
-
-            socket.emit(event, data, (ack) => {
-                clearTimeout(timer)
-                if (ack && ack.received) {
-                    resolve()
-                } else {
-                    reject(new Error(`Failed to acknowledge ${event}`))
-                }
-            })
-        })
-    }
-
     /**
-     * Stream generated cards to the client
+     * Safely emit socket event only if client is still connected
      * @param {Socket} socket - The socket instance
-     * @param {string} generationId - The generation ID
-     * @param {Array} cards - The generated cards
+     * @param {string} event - The event name
+     * @param {Object} data - The event data
      */
-    async streamGeneratedCards(socket, generationId, cards) {
-        const generation = this.activeGenerations.get(generationId)
-        if (!generation) {
-            throw new Error('Generation not found')
-        }
-
-        try {
-            // Initial progress notification
-            await this.emitWithAck(socket, 'generationProgress', {
-                generationId,
-                message: 'Processing AI response and preparing cards...',
-                progress: 0,
-                totalCards: cards.length
-            })
-
-            // Stream each card as it's processed
-            for (let i = 0; i < cards.length; i++) {
-                const card = cards[i]
-                const progress = Math.round((i / cards.length) * 100)
-
-                // Validate card
-                if (!socketHelper.validateCard(card)) {
-                    throw new Error(`Invalid card format at index ${i}`)
-                }
-
-                // Update progress BEFORE emitting the card
-                await this.updateSessionStatus(generation.sessionId, this.SESSION_STATUS.GENERATING,
-                    `Generated ${i + 1} of ${cards.length} cards`, {
-                        cardsGenerated: i + 1,
-                        totalCards: cards.length
-                    })
-
-                // Emit progress update BEFORE the card
-                await this.emitWithAck(socket, 'generationProgress', {
-                    generationId,
-                    message: `Generated ${i + 1} of ${cards.length} cards`,
-                    progress,
-                    totalCards: cards.length,
-                    currentCard: i + 1
-                })
-
-                // Small delay to ensure progress is processed
-                await new Promise(resolve => setTimeout(resolve, 50))
-
-                // Emit card
-                socket.emit('cardGenerated', {
-                    generationId,
-                    card,
-                    progress,
-                    totalCards: cards.length,
-                    currentCard: i + 1
-                })
-
-                // Small delay between cards to prevent overwhelming the client
-                if (i < cards.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 100))
-                }
+    safeEmit(socket, event, data) {
+        if (socket && socket.connected) {
+            try {
+                socket.emit(event, data)
+            } catch (error) {
+                console.error(`Failed to emit ${event}:`, error)
             }
-
-            // Final progress notification
-            await this.emitWithAck(socket, 'generationProgress', {
-                generationId,
-                message: 'Finalizing card generation...',
-                progress: 100,
-                totalCards: cards.length
-            })
-
-            // Complete generation
-            await this.updateSessionStatus(generation.sessionId, this.SESSION_STATUS.COMPLETED,
-                'Generation complete', {
-                    cardsGenerated: cards.length,
-                    totalCards: cards.length
-                })
-
-            await this.emitWithAck(socket, 'generationComplete', {
-                generationId,
-                totalCards: cards.length
-            })
-        } catch (error) {
-            console.error('Error streaming cards:', error)
-            await this.handleGenerationError(socket, generationId, generation.sessionId, error)
-        } finally {
-            // Clean up generation tracking and timeouts
-            if (generation && generation.timeoutId) clearTimeout(generation.timeoutId)
-            this.activeGenerations.delete(generationId)
+        } else {
+            console.log(`Skipping ${event} emission - socket not connected`)
         }
     }
 
@@ -586,10 +488,52 @@ class AISocketService {
             this.activeGenerations.delete(generationId)
         }
 
-        socket.emit('generationError', {
+        this.safeEmit(socket, 'generationError', {
             generationId,
             error: errorMessage
         })
+    }
+
+    /**
+     * Cancel an active generation to prevent wasted AI credits
+     * @param {string} generationId - The generation ID to cancel
+     * @param {string} reason - The reason for cancellation
+     */
+    async cancelGeneration(generationId, reason = 'Cancelled by user') {
+        const generation = this.activeGenerations.get(generationId)
+        if (!generation) {
+            console.log(`Generation ${generationId} not found for cancellation`)
+            return
+        }
+
+        console.log(`Cancelling generation ${generationId}: ${reason}`)
+
+        // Clear any timeout
+        if (generation.timeoutId) {
+            clearTimeout(generation.timeoutId)
+        }
+
+        // Update session status to cancelled
+        try {
+            await generationSessionService.updateProgress(generation.sessionId, {
+                status: this.SESSION_STATUS.CANCELLED,
+                errorMessage: reason
+            })
+        } catch (error) {
+            console.error(`Failed to update session ${generation.sessionId} status to cancelled:`, error)
+        }
+
+        // Remove from active generations
+        this.activeGenerations.delete(generationId)
+
+        // Try to emit cancellation to client if still connected
+        const userSocket = this.userConnections.get(generation.userId)
+        if (userSocket && userSocket.connected) {
+            this.safeEmit(userSocket, 'generationError', {
+                generationId,
+                error: `Generation cancelled: ${reason}`
+            })
+        }
     }
 
     /**
@@ -612,6 +556,37 @@ class AISocketService {
     isValidStatusTransition(currentStatus, newStatus) {
         const transitions = this.VALID_STATUS_TRANSITIONS[currentStatus] || []
         return transitions.includes(newStatus)
+    }
+
+    /**
+     * Shutdown the service and clean up resources
+     */
+    shutdown() {
+        // Clean up all active generations
+        for (const [generationId, generation] of this.activeGenerations.entries()) {
+            if (generation.timeoutId) {
+                clearTimeout(generation.timeoutId)
+            }
+
+            // Mark as failed
+            if (generationSessionService && generation.sessionId) {
+                generationSessionService.updateProgress(generation.sessionId, {
+                    status: this.SESSION_STATUS.FAILED,
+                    errorMessage: 'Service shutdown'
+                }).catch(error => {
+                    console.error(`Failed to update session ${generation.sessionId} during shutdown:`, error)
+                })
+            }
+        }
+
+        this.activeGenerations.clear()
+        this.userConnections.clear()
+        this.userLimits.clear()
+
+        if (this.io) {
+            this.io.close()
+            this.io = null
+        }
     }
 }
 

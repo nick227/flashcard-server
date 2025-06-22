@@ -246,6 +246,21 @@ class AISocketHelper {
         }
         activeGenerations.delete(generationId)
     }
+
+    /**
+     * Log socket errors with context
+     * @param {string} context - The context where the error occurred
+     * @param {Error} error - The error object
+     * @param {Object} metadata - Additional metadata about the error
+     */
+    logSocketError(context, error, metadata = {}) {
+        console.error(`Socket ${context} error:`, {
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString(),
+            ...metadata
+        })
+    }
 }
 
 module.exports = new AISocketHelper()

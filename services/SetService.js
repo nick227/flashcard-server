@@ -437,8 +437,8 @@ class SetService {
                 hint: card.hint || null,
                 front_image: card.front.imageUrl || null,
                 back_image: card.back.imageUrl || null,
-                layout_front: card.front.layout || 'text',
-                layout_back: card.back.layout || 'text'
+                layout_front: card.front.layout || 'default',
+                layout_back: card.back.layout || 'default'
             };
 
             console.log(`[SetService] Card ${index + 1} data prepared:`, {
