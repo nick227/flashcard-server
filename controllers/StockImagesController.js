@@ -7,28 +7,17 @@ class StockImagesController extends ApiController {
     }
 
     /**
-     * Get random stock images grouped by session_id
+     * Get random stock images from all sessions
      * Returns a flat array of image URLs
      */
     async list(req, res) {
         try {
-            // Get a random session_id first
-            const randomSession = await this.model.findOne({
-                attributes: ['session_id'],
-                order: this.model.sequelize.literal('RAND()'),
-                raw: true
-            });
-
-            if (!randomSession) {
-                return res.json([]);
-            }
-
-            // Get all images from that session
+            // Get random stock images from all sessions
+            // Use a random seed to ensure fresh results each time
             const stockImages = await this.model.findAll({
-                where: {
-                    session_id: randomSession.session_id
-                },
                 attributes: ['cloudinary_url'],
+                order: this.model.sequelize.literal(`RAND(${Date.now()})`),
+                limit: 5, // Limit to 5 random images
                 raw: true
             });
 
