@@ -22,12 +22,12 @@ class SetsController extends ApiController {
 
         try {
             const type = req.params.type;
-            const ids = req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)) : [];
+            const ids = req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : [];
 
             if (!ids.length) {
-                console.error(`[${requestId}] No IDs provided`);
+                console.error(`[${requestId}] No valid IDs provided`);
                 return res.status(400).json(responseFormatter.formatError({
-                    message: 'No IDs provided'
+                    message: 'No valid IDs provided'
                 }));
             }
 
@@ -40,94 +40,101 @@ class SetsController extends ApiController {
                 }));
             }
 
-            let results;
-            try {
-                switch (type) {
-                    case 'views':
-                        results = await this.model.sequelize.models.History.findAll({
-                            attributes: [
-                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                            ],
-                            where: {
-                                set_id: ids
-                            },
-                            group: ['set_id'],
-                            raw: true
-                        });
-                        break;
-                    case 'likes':
-                        results = await this.model.sequelize.models.UserLike.findAll({
-                            attributes: [
-                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                            ],
-                            where: {
-                                set_id: ids
-                            },
-                            group: ['set_id'],
-                            raw: true
-                        });
-                        break;
-                    case 'cards':
-                        results = await this.model.sequelize.models.Card.findAll({
-                            attributes: [
-                                'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
-                            ],
-                            where: {
-                                set_id: ids
-                            },
-                            group: ['set_id'],
-                            raw: true
-                        });
-                        break;
-                    default:
-                        return res.status(400).json(responseFormatter.formatError({
-                            message: 'Invalid batch type'
-                        }));
-                }
-            } catch (dbError) {
-                console.error(`[${requestId}] Database error in batchGet:`, {
-                    error: dbError,
-                    type,
-                    ids,
-                    stack: dbError.stack,
-                    sql: dbError.sql,
-                    sqlMessage: dbError.sqlMessage,
-                    sqlState: dbError.sqlState
-                });
-                return res.status(500).json(responseFormatter.formatError({
-                    message: 'Database error occurred while fetching batch data'
-                }));
-            }
-
-            // Format results as a map of id -> count
+            // Initialize empty results
             const formattedResults = ids.reduce((acc, id) => {
                 acc[id] = 0;
                 return acc;
             }, {});
 
-            results.forEach(result => {
-                if (result && result.set_id) {
-                    formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
+            // Try to get results, but don't fail if database issues occur
+            try {
+                let results = [];
+
+                switch (type) {
+                    case 'views':
+                        if (this.model.sequelize.models.History) {
+                            results = await this.model.sequelize.models.History.findAll({
+                                attributes: [
+                                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('set_id')), 'count']
+                                ],
+                                where: {
+                                    set_id: ids
+                                },
+                                group: ['set_id'],
+                                raw: true
+                            });
+                        }
+                        break;
+                    case 'likes':
+                        if (this.model.sequelize.models.UserLike) {
+                            results = await this.model.sequelize.models.UserLike.findAll({
+                                attributes: [
+                                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('set_id')), 'count']
+                                ],
+                                where: {
+                                    set_id: ids
+                                },
+                                group: ['set_id'],
+                                raw: true
+                            });
+                        }
+                        break;
+                    case 'cards':
+                        if (this.model.sequelize.models.Card) {
+                            results = await this.model.sequelize.models.Card.findAll({
+                                attributes: [
+                                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('set_id')), 'count']
+                                ],
+                                where: {
+                                    set_id: ids
+                                },
+                                group: ['set_id'],
+                                raw: true
+                            });
+                        }
+                        break;
+                    default:
+                        console.warn(`[${requestId}] Invalid batch type: ${type}`);
+                        return res.json(formattedResults);
                 }
-            });
+
+                // Process results safely
+                if (Array.isArray(results)) {
+                    results.forEach(result => {
+                        if (result && result.set_id && typeof result.count !== 'undefined') {
+                            formattedResults[result.set_id] = parseInt(result.count, 10) || 0;
+                        }
+                    });
+                }
+
+            } catch (dbError) {
+                console.error(`[${requestId}] Database error in batchGet (${type}):`, {
+                    error: dbError.message,
+                    type,
+                    ids: ids.slice(0, 5), // Log only first 5 IDs
+                    stack: dbError.stack
+                });
+
+                // In production, just return empty results instead of failing
+                console.warn(`[${requestId}] Returning empty results due to database error for ${type}`);
+            }
 
             res.json(formattedResults);
         } catch (err) {
-            console.error(`[${requestId}] SetsController.batchGet - Error:`, {
-                error: err,
+            console.error(`[${requestId}] SetsController.batchGet - Unexpected error:`, {
+                error: err.message,
                 type: req.params.type,
-                ids: req.query.ids,
-                stack: err.stack,
-                requestId,
-                timestamp: new Date().toISOString(),
-                headers: req.headers,
-                url: req.url,
-                method: req.method
+                ids: req.query.ids ? req.query.ids.split(',').slice(0, 5) : [], // Log only first 5
+                stack: err.stack
             });
-            res.status(500).json(responseFormatter.formatError({
-                message: 'Failed to get batch data',
-                error: process.env.NODE_ENV === 'development' ? err.message : undefined
-            }));
+
+            // Always return empty results instead of error
+            const emptyResults = (req.query.ids ? req.query.ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : []).reduce((acc, id) => {
+                acc[id] = 0;
+                return acc;
+            }, {});
+
+            res.json(emptyResults);
         }
     }
 
