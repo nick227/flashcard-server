@@ -545,9 +545,11 @@ class SetsController extends ApiController {
             });
 
             // Build where clause for set type
-            let whereClause = {
-                hidden: false // Always filter out hidden sets
-            };
+            let whereClause = {};
+            // Only filter out hidden sets if showHidden is not true
+            if (req.query.showHidden !== 'true') {
+                whereClause.hidden = false;
+            }
 
             if (req.query.setType) {
                 switch (req.query.setType) {
