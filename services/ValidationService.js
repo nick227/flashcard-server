@@ -34,17 +34,6 @@ module.exports = class ValidationService {
 
         const errors = [];
         cards.forEach((card, index) => {
-            // Flatten front if needed
-            if (card.front && typeof card.front === 'object' && (!card.front.text && !card.front.imageUrl) && Array.isArray(card.front.cells) && card.front.cells[0] && card.front.cells[0][0]) {
-                card.front.text = card.front.cells[0][0].text;
-                card.front.imageUrl = card.front.cells[0][0].imageUrl;
-            }
-            // Flatten back if needed
-            if (card.back && typeof card.back === 'object' && (!card.back.text && !card.back.imageUrl) && Array.isArray(card.back.cells) && card.back.cells[0] && card.back.cells[0][0]) {
-                card.back.text = card.back.cells[0][0].text;
-                card.back.imageUrl = card.back.cells[0][0].imageUrl;
-            }
-
             // Validate front
             if (!card.front || typeof card.front !== 'object') {
                 errors.push(`Card ${index + 1}: Front must be an object with text and imageUrl properties`);

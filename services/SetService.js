@@ -2,6 +2,7 @@ const { Set, Card, Tag, SetTag, User, Category, UserLike } = require('../db');
 const ValidationService = require('./ValidationService');
 const SetTransformer = require('./SetTransformer');
 const SetAccessService = require('./SetAccessService');
+const NodeMemoryCache = require('./cache/NodeMemoryCache');
 
 class SetService {
     constructor(models = null) {
@@ -90,47 +91,77 @@ class SetService {
      */
     async updateSet(setId, setData, cards, tags) {
         const transaction = await Set.sequelize.transaction();
-
+        let updateError = null;
         try {
+            console.log('[SetService.updateSet] Called with:', {
+                setId,
+                setData,
+                cardsCount: Array.isArray(cards) ? cards.length : 'N/A',
+                tagsCount: Array.isArray(tags) ? tags.length : 'N/A'
+            });
+
             // Normalize field names
             const normalizedSetData = this.normalizeSetData(setData);
+            console.log('[SetService.updateSet] Normalized setData:', normalizedSetData);
 
             // Validate inputs
             this.validateSetInputs(normalizedSetData, cards, tags);
+            console.log('[SetService.updateSet] Input validation passed');
 
             // Find and verify ownership
             const existingSet = await Set.findByPk(setId, { transaction });
             if (!existingSet) {
+                console.error('[SetService.updateSet] Set not found:', setId);
                 throw new Error('Set not found');
             }
             if (existingSet.educator_id !== normalizedSetData.educator_id) {
+                console.error('[SetService.updateSet] Unauthorized update attempt:', {
+                    setId,
+                    educator_id: normalizedSetData.educator_id,
+                    setOwner: existingSet.educator_id
+                });
                 throw new Error('Unauthorized to update this set');
             }
 
             // Update set
             await existingSet.update(normalizedSetData, { transaction });
+            console.log('[SetService.updateSet] Set updated in DB:', existingSet.id);
 
             // Handle tags and cards
             const promises = [];
 
             if (tags !== undefined) {
+                console.log('[SetService.updateSet] Handling tags:', tags);
                 promises.push(this.handleTags(setId, tags, transaction));
             }
 
             if (cards !== undefined) {
+                console.log('[SetService.updateSet] Handling cards:', {
+                    cardsCount: Array.isArray(cards) ? cards.length : 'N/A',
+                    firstCard: Array.isArray(cards) && cards.length > 0 ? cards[0] : null
+                });
                 promises.push(this.replaceCards(setId, cards, transaction));
             }
 
             if (promises.length > 0) {
                 await Promise.all(promises);
+                console.log('[SetService.updateSet] Tags and cards updated');
             }
 
             await transaction.commit();
+            console.log('[SetService.updateSet] Transaction committed successfully');
             return existingSet;
         } catch (error) {
             await transaction.rollback();
+            console.error('[SetService.updateSet] Error:', error);
             this.logError('updateSet', error, { setId, userId: setData.educator_id });
+            updateError = error;
             throw error;
+        } finally {
+            // Invalidate cache for this set only
+            const cacheKey = `Set:get:${setId}`;
+            NodeMemoryCache.delete(cacheKey);
+            console.log(`[SetService.updateSet] Cache invalidated for key: ${cacheKey}`);
         }
     }
 
