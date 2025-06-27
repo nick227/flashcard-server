@@ -23,59 +23,38 @@ class SetService {
      * Create a new set with cards and tags
      */
     async createSet(setData, cards, tags) {
-        console.log('[SetService] createSet started...', {
-            setTitle: setData.title,
-            educatorId: setData.educator_id,
-            cardsCount: cards ? cards.length : 0,
-            tagsCount: tags ? tags.length : 0,
-            thumbnail: setData.thumbnail
-        });
 
         const transaction = await Set.sequelize.transaction();
 
         try {
             // Normalize field names
             const normalizedSetData = this.normalizeSetData(setData);
-            console.log('[SetService] Set data normalized:', normalizedSetData);
 
             // Validate inputs
-            console.log('[SetService] Validating inputs...');
             this.validateSetInputs(normalizedSetData, cards, tags);
-            console.log('[SetService] Input validation passed');
 
             // Create set
-            console.log('[SetService] Creating set in database...');
             const set = await Set.create({
                 ...normalizedSetData,
                 educator_id: normalizedSetData.educator_id
             }, { transaction });
-            console.log('[SetService] Set created successfully:', {
-                setId: set.id,
-                title: set.title
-            });
 
             // Handle tags and cards in parallel if both exist
             const promises = [];
 
             if (tags && tags.length > 0) {
-                console.log('[SetService] Processing tags...', { tagsCount: tags.length });
                 promises.push(this.handleTags(set.id, tags, transaction));
             }
 
             if (cards && cards.length > 0) {
-                console.log('[SetService] Processing cards...', { cardsCount: cards.length });
                 promises.push(this.createCards(set.id, cards, transaction));
             }
 
             if (promises.length > 0) {
-                console.log('[SetService] Executing parallel operations...', { promisesCount: promises.length });
                 await Promise.all(promises);
-                console.log('[SetService] Parallel operations completed');
             }
 
-            console.log('[SetService] Committing transaction...');
             await transaction.commit();
-            console.log('[SetService] Transaction committed successfully');
 
             return set;
         } catch (error) {
@@ -93,20 +72,12 @@ class SetService {
         const transaction = await Set.sequelize.transaction();
         let updateError = null;
         try {
-            console.log('[SetService.updateSet] Called with:', {
-                setId,
-                setData,
-                cardsCount: Array.isArray(cards) ? cards.length : 'N/A',
-                tagsCount: Array.isArray(tags) ? tags.length : 'N/A'
-            });
 
             // Normalize field names
             const normalizedSetData = this.normalizeSetData(setData);
-            console.log('[SetService.updateSet] Normalized setData:', normalizedSetData);
 
             // Validate inputs
             this.validateSetInputs(normalizedSetData, cards, tags);
-            console.log('[SetService.updateSet] Input validation passed');
 
             // Find and verify ownership
             const existingSet = await Set.findByPk(setId, { transaction });
@@ -125,31 +96,23 @@ class SetService {
 
             // Update set
             await existingSet.update(normalizedSetData, { transaction });
-            console.log('[SetService.updateSet] Set updated in DB:', existingSet.id);
 
             // Handle tags and cards
             const promises = [];
 
             if (tags !== undefined) {
-                console.log('[SetService.updateSet] Handling tags:', tags);
                 promises.push(this.handleTags(setId, tags, transaction));
             }
 
             if (cards !== undefined) {
-                console.log('[SetService.updateSet] Handling cards:', {
-                    cardsCount: Array.isArray(cards) ? cards.length : 'N/A',
-                    firstCard: Array.isArray(cards) && cards.length > 0 ? cards[0] : null
-                });
                 promises.push(this.replaceCards(setId, cards, transaction));
             }
 
             if (promises.length > 0) {
                 await Promise.all(promises);
-                console.log('[SetService.updateSet] Tags and cards updated');
             }
 
             await transaction.commit();
-            console.log('[SetService.updateSet] Transaction committed successfully');
             return existingSet;
         } catch (error) {
             await transaction.rollback();
@@ -161,7 +124,6 @@ class SetService {
             // Invalidate cache for this set only
             const cacheKey = `Set:get:${setId}`;
             NodeMemoryCache.delete(cacheKey);
-            console.log(`[SetService.updateSet] Cache invalidated for key: ${cacheKey}`);
         }
     }
 
@@ -188,7 +150,6 @@ class SetService {
             // Delete the set
             await set.destroy({ transaction });
             await transaction.commit();
-            console.log('Set deleted successfully');
             return true;
         } catch (error) {
             await transaction.rollback();
@@ -436,22 +397,15 @@ class SetService {
      * Create cards efficiently
      */
     async createCards(setId, cards, transaction) {
-        console.log('[SetService] createCards started...', {
-            setId,
-            cardsCount: cards.length
-        });
 
         if (!Array.isArray(cards) || cards.length === 0) {
-            console.log('[SetService] No cards to create');
             return;
         }
 
         // Validate all cards first
-        console.log('[SetService] Validating cards...');
         cards.forEach((card, index) => {
             try {
                 this.validationService.validateCard(card);
-                console.log(`[SetService] Card ${index + 1} validation passed`);
             } catch (error) {
                 console.error(`[SetService] Card ${index + 1} validation failed:`, error.message);
                 throw new Error(`Card ${index + 1}: ${error.message}`);
@@ -459,7 +413,6 @@ class SetService {
         });
 
         // Prepare card data for bulk creation
-        console.log('[SetService] Preparing card data for bulk creation...');
         const cardData = cards.map((card, index) => {
             const cardRecord = {
                 set_id: setId,
@@ -472,23 +425,11 @@ class SetService {
                 layout_back: card.back.layout || 'default'
             };
 
-            console.log(`[SetService] Card ${index + 1} data prepared:`, {
-                hasFrontText: !!cardRecord.front,
-                hasBackText: !!cardRecord.back,
-                hasFrontImage: !!cardRecord.front_image,
-                hasBackImage: !!cardRecord.back_image,
-                frontLayout: cardRecord.layout_front,
-                backLayout: cardRecord.layout_back
-            });
 
             return cardRecord;
         });
 
-        console.log('[SetService] Creating cards in database...');
         const createdCards = await Card.bulkCreate(cardData, { transaction });
-        console.log('[SetService] Cards created successfully:', {
-            createdCount: createdCards.length
-        });
     }
 
     /**
