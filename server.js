@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 const app = express();
+const session = require('express-session');
 
 // Add request ID middleware
 app.use((req, res, next) => {
@@ -23,7 +24,6 @@ app.set('trust proxy', 1);
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcrypt');
-const session = require('express-session');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
@@ -46,6 +46,7 @@ const newsletterRouter = require('./routes/newsletter');
 const healthRouter = require('./routes/health');
 const adminRouter = require('./routes/admin');
 const stockImagesRouter = require('./routes/stock-images');
+const thumbnailRouter = require('./routes/thumbnail');
 
 // Use Railway's port or fallback to 5000 for local development
 const port = process.env.RAILWAY_TCP_PROXY_PORT || process.env.PORT || 5000;
@@ -298,6 +299,18 @@ app.use('/images', express.static(path.join(__dirname, 'public/images'), {
     }
 }));
 
+// Add session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false,
+        httpOnly: true,
+        sameSite: 'lax'
+    }
+}));
+
 // Initialize passport
 app.use(passport.initialize());
 
@@ -352,6 +365,13 @@ app.use('/api/newsletter', newsletterRouter);
 app.use('/api/health', healthRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/stock-images', stockImagesRouter);
+app.use('/api/thumbnail', thumbnailRouter);
+
+// Add session ID logging middleware
+app.use((req, res, next) => {
+    console.log('Session ID:', req.sessionID);
+    next();
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

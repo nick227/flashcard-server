@@ -188,7 +188,7 @@ class SetService {
             // Delete the set
             await set.destroy({ transaction });
             await transaction.commit();
-
+            console.log('Set deleted successfully');
             return true;
         } catch (error) {
             await transaction.rollback();

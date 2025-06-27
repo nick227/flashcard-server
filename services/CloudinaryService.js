@@ -1,5 +1,5 @@
 const cloudinary = require('../config/cloudinary');
-const { CloudinaryRecord } = require('../db/models/cloudinary');
+const { Cloudinary } = require('../db');
 
 class CloudinaryService {
     static async uploadImage(file, options = {}) {
@@ -117,19 +117,19 @@ class CloudinaryService {
             // Upload to Cloudinary
             const uploadResult = await this.uploadImage(file, options);
 
-            // Save record to database
-            const record = await CloudinaryRecord.create({
-                publicId: uploadResult.publicId,
-                url: uploadResult.url,
+            console.log('[CloudinaryService] About to save record to DB...');
+            const record = await Cloudinary.create({
+                public_id: uploadResult.publicId,
+                secure_url: uploadResult.url,
                 folder: options.folder || 'flashcards',
-                userId: options.userId || null,
-                metadata: {
-                    width: uploadResult.width,
-                    height: uploadResult.height,
-                    format: uploadResult.format,
-                    size: uploadResult.size
-                }
+                resource_type: uploadResult.resource_type || 'image',
+                format: uploadResult.format,
+                width: uploadResult.width,
+                height: uploadResult.height,
+                bytes: uploadResult.size,
+                original_filename: uploadResult.original_filename || null
             });
+            console.log('[CloudinaryService] Record saved:', record);
 
             return {
                 ...uploadResult,
@@ -152,8 +152,8 @@ class CloudinaryService {
 
             if (deleteResult.success) {
                 // Remove from database
-                const deletedCount = await CloudinaryRecord.destroy({
-                    where: { publicId }
+                const deletedCount = await Cloudinary.destroy({
+                    where: { public_id: publicId }
                 });
 
                 return {
@@ -175,8 +175,8 @@ class CloudinaryService {
 
     static async findByPublicId(publicId) {
         try {
-            const record = await CloudinaryRecord.findOne({
-                where: { publicId }
+            const record = await Cloudinary.findOne({
+                where: { public_id: publicId }
             });
 
             return record;
@@ -191,7 +191,7 @@ class CloudinaryService {
 
     static async findByFolder(folder) {
         try {
-            const records = await CloudinaryRecord.findAll({
+            const records = await Cloudinary.findAll({
                 where: { folder },
                 order: [
                     ['createdAt', 'DESC']

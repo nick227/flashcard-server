@@ -7,6 +7,8 @@ const SearchService = require('../services/SearchService');
 const { Op } = require('sequelize');
 const toCamel = require('../utils/toCamel');
 const CloudinaryService = require('../services/CloudinaryService');
+const NodeMemoryCache = require('../services/cache/NodeMemoryCache');
+const { clear: clearApiCache } = require('../services/cache/ApicacheWrapper');
 
 class SetsController extends ApiController {
     constructor() {
@@ -310,15 +312,6 @@ class SetsController extends ApiController {
     }
 
     async create(req, res) {
-        console.log('[SetsController] Starting set creation...', {
-            userId: req.user ? req.user.id : null,
-            hasFiles: !!req.files,
-            fileKeys: req.files ? Object.keys(req.files) : [],
-            hasThumbnailUrl: !!req.body.thumbnailUrl,
-            thumbnailUrl: req.body.thumbnailUrl,
-            cardsCount: req.body.cards ? JSON.parse(req.body.cards).length : 0
-        });
-
         try {
             // Assemble setData from individual request body fields
             const setData = {
@@ -331,42 +324,14 @@ class SetsController extends ApiController {
                 educator_id: req.user.id
             };
 
-            console.log('[SetsController] Set data assembled:', {
-                title: setData.title,
-                categoryId: setData.categoryId,
-                price: setData.price,
-                isPublic: setData.isPublic,
-                isSubscriberOnly: setData.isSubscriberOnly
-            });
-
             // Extract cards data
             const cards = JSON.parse(req.body.cards || '[]');
-            console.log('[SetsController] Cards data extracted:', {
-                cardsCount: cards.length,
-                cardsWithImages: cards.filter(card =>
-                    (card.front && card.front.imageUrl) ||
-                    (card.back && card.back.imageUrl)
-                ).length
-            });
 
             // Extract tags
             const tags = req.body.tags ? JSON.parse(req.body.tags) : null;
-            console.log('[SetsController] Tags extracted:', tags);
-
-            // Thumbnail Handling
-            console.log('[SetsController] Processing thumbnail...', {
-                hasThumbnailFile: !!(req.files && req.files.thumbnail),
-                hasThumbnailUrl: !!req.body.thumbnailUrl,
-                thumbnailUrl: req.body.thumbnailUrl
-            });
 
             const thumbnailFile = req.files && req.files.thumbnail ? req.files.thumbnail[0] : null;
             if (thumbnailFile) {
-                console.log('[SetsController] Uploading thumbnail file to Cloudinary...', {
-                    filename: thumbnailFile.originalname,
-                    size: thumbnailFile.size,
-                    mimetype: thumbnailFile.mimetype
-                });
                 const result = await CloudinaryService.uploadImage(thumbnailFile.buffer, {
                     folder: 'thumbnails',
                     transformation: [
@@ -375,69 +340,27 @@ class SetsController extends ApiController {
                     ]
                 });
                 setData.thumbnail = result.secure_url;
-                console.log('[SetsController] Thumbnail uploaded successfully:', result.secure_url);
             } else if (req.body.thumbnailUrl) {
-                console.log('[SetsController] Using stock image thumbnail:', req.body.thumbnailUrl);
                 setData.thumbnail = req.body.thumbnailUrl;
-            } else {
-                console.log('[SetsController] No thumbnail provided');
             }
 
             // Process image files and update card data
             if (req.files) {
-                console.log('[SetsController] Checking for card images...', {
-                    fileKeys: Object.keys(req.files),
-                    cardImageKeys: Object.keys(req.files).filter(key => key.startsWith('card_') && key.endsWith('_image'))
-                });
 
                 // Check if there are any actual card image files to upload
                 const hasCardImages = Object.keys(req.files).some(key =>
                     key.startsWith('card_') && key.endsWith('_image') && req.files[key] && req.files[key].length > 0
                 );
 
-                console.log('[SetsController] Card images check:', {
-                    hasCardImages,
-                    cardImageDetails: hasCardImages ? Object.keys(req.files)
-                        .filter(key => key.startsWith('card_') && key.endsWith('_image'))
-                        .map(key => ({
-                            key,
-                            hasFiles: !!(req.files[key] && req.files[key].length > 0),
-                            fileCount: req.files[key] ? req.files[key].length : 0
-                        })) : []
-                });
-
                 if (hasCardImages) {
-                    console.log('[SetsController] Processing card images...');
                     await this.processCardImages(cards, req.files);
-                    console.log('[SetsController] Card images processed successfully');
-                } else {
-                    console.log('[SetsController] No card images to process, skipping upload');
                 }
-            } else {
-                console.log('[SetsController] No files in request');
             }
-
-            console.log('[SetsController] Final set data before creation:', {
-                thumbnail: setData.thumbnail,
-                cardsCount: cards.length,
-                tagsCount: tags ? tags.length : 0
-            });
 
             // Create the set
             const result = await this.setService.createSet(setData, cards, tags);
-            console.log('[SetsController] Set created successfully:', {
-                setId: result.id,
-                title: result.title
-            });
-
             res.status(201).json(result);
         } catch (error) {
-            console.error('[SetsController] Set creation failed:', {
-                error: error.message,
-                stack: error.stack,
-                userId: req.user ? req.user.id : null
-            });
-
             if (error.name === 'SetValidationError') {
                 return res.status(400).json(this.responseFormatter.formatError({
                     message: error.message
@@ -505,6 +428,12 @@ class SetsController extends ApiController {
 
             // Call the service to perform the update
             const updatedSet = await this.setService.updateSet(setId, setData, cards, tags);
+
+            // Invalidate in-memory cache for this set
+            NodeMemoryCache.delete(`Set:get:${setId}`);
+            // Invalidate HTTP response cache for this set and the sets list
+            clearApiCache(`/api/sets/${setId}`);
+            clearApiCache('/api/sets');
 
             res.json(updatedSet);
         } catch (error) {
@@ -807,6 +736,7 @@ class SetsController extends ApiController {
 
             // Check if set exists and user has permission
             const existingSet = await this.setService.getSetById(setId);
+
             if (!existingSet) {
                 return res.status(404).json({ message: 'Set not found' });
             }
@@ -815,6 +745,13 @@ class SetsController extends ApiController {
             }
 
             await this.setService.deleteSet(setId);
+
+            // Invalidate in-memory cache for this set
+            NodeMemoryCache.delete(`Set:get:${setId}`);
+            // Invalidate HTTP response cache for this set and the sets list
+            clearApiCache(`/api/sets/${setId}`);
+            clearApiCache('/api/sets');
+
             return res.json(responseFormatter.formatSuccess('Set deleted successfully'));
         } catch (err) {
             return this.handleError(err, res);
