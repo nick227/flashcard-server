@@ -367,12 +367,6 @@ app.use('/api/admin', adminRouter);
 app.use('/api/stock-images', stockImagesRouter);
 app.use('/api/thumbnail', thumbnailRouter);
 
-// Add session ID logging middleware
-app.use((req, res, next) => {
-    console.log('Session ID:', req.sessionID);
-    next();
-});
-
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Global error handler:', {
