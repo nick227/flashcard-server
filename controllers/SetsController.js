@@ -63,6 +63,7 @@ class SetsController extends ApiController {
                                     set_id: ids
                                 },
                                 group: ['set_id'],
+                                order: [],
                                 raw: true
                             });
                         }
