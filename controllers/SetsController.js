@@ -57,7 +57,7 @@ class SetsController extends ApiController {
                         if (this.model.sequelize.models.History) {
                             results = await this.model.sequelize.models.History.findAll({
                                 attributes: [
-                                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('set_id')), 'count']
+                                    'set_id', [this.model.sequelize.fn('COUNT', this.model.sequelize.col('id')), 'count']
                                 ],
                                 where: {
                                     set_id: ids

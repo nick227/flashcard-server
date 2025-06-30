@@ -168,8 +168,8 @@ app.use(cors({
             return callback(null, true);
         }
 
-        // Check if origin matches Vercel preview patterns
-        if (isProduction && vercelPreviewPatterns.some(pattern => pattern.test(origin))) {
+        // Always allow Vercel preview deployments matching these patterns
+        if (vercelPreviewPatterns.some(pattern => pattern.test(origin))) {
             return callback(null, true);
         }
 
