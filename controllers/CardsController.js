@@ -257,6 +257,31 @@ class CardsController extends ApiController {
             }))
         }
     }
+
+    /**
+     * List all cards in a set
+     * GET /cards/set/:setId
+     */
+    async list(req, res) {
+        try {
+            const setId = parseInt(req.params.setId, 10)
+            if (isNaN(setId)) {
+                return res.status(400).json({ error: 'Invalid set ID' })
+            }
+            // Find all cards for the set
+            const cards = await this.model.findAll({
+                    where: { set_id: setId },
+                    order: [
+                        ['id', 'ASC']
+                    ]
+                })
+                // If no cards, return empty array
+            return res.json(Array.isArray(cards) ? cards : [])
+        } catch (error) {
+            console.error('CardsController.list - Error:', error)
+            return res.status(500).json({ error: 'Failed to fetch cards' })
+        }
+    }
 }
 
 module.exports = CardsController;
