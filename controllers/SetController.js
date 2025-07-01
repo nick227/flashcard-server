@@ -288,7 +288,6 @@ class SetController extends ApiController {
 
     async list(req, res) {
         try {
-
             const errors = this.validateQueryParams(req.query);
             if (errors.length > 0) {
                 console.error('Validation errors:', errors);
@@ -297,25 +296,21 @@ class SetController extends ApiController {
                     errors
                 }));
             }
-
             // Validate filter values
             if (req.query.educatorId && isNaN(parseInt(req.query.educatorId))) {
                 console.error('Invalid educator ID:', req.query.educatorId);
                 return res.status(400).json({ error: 'Invalid educator ID' });
             }
-
             const params = this.parseParams({
                 ...req.query,
                 userId: req.user ? req.user.id : null
             });
-
             // Build where clause for set type
             let whereClause = {};
             // Only filter out hidden sets if showHidden is not true
             if (req.query.showHidden !== 'true') {
                 whereClause.hidden = false;
             }
-
             if (req.query.setType) {
                 switch (req.query.setType) {
                     case 'free':
@@ -342,7 +337,6 @@ class SetController extends ApiController {
                         break;
                 }
             }
-
             try {
                 // If category name is provided, find the category ID
                 let categoryId = null;
@@ -359,13 +353,11 @@ class SetController extends ApiController {
                         return res.status(404).json({ error: 'Category not found' });
                     }
                 }
-
                 // Parse sort parameters
                 const { sortBy, sortOrder } = req.query.sortBy ? {
                     sortBy: req.query.sortBy,
                     sortOrder: (req.query.sortOrder || 'ASC').toUpperCase()
                 } : this.parseSortParams(req.query.sortOrder || 'featured');
-
                 // Add search conditions if search query is provided
                 if (params.search) {
                     try {
@@ -381,18 +373,15 @@ class SetController extends ApiController {
                         }));
                     }
                 }
-
                 if (req.query.educator_id) {
                     whereClause.educator_id = req.query.educator_id;
                 }
-
                 // Optimize includes based on what's needed
                 const includes = [{
                     model: this.model.sequelize.models.Category,
                     as: 'category',
                     attributes: ['id', 'name']
                 }];
-
                 // Only include educator if needed
                 if (!req.query.educator_id) {
                     includes.push({
@@ -401,7 +390,6 @@ class SetController extends ApiController {
                         attributes: ['id', 'name', 'email', 'image']
                     });
                 }
-
                 // Only include likes if needed
                 if (req.query.liked === 'true') {
                     includes.push({
@@ -414,7 +402,6 @@ class SetController extends ApiController {
                         }
                     });
                 }
-
                 // Always include tags
                 includes.push({
                     model: this.model.sequelize.models.Tag,
@@ -422,6 +409,18 @@ class SetController extends ApiController {
                     through: { attributes: [] },
                     attributes: ['id', 'name']
                 });
+
+                // --- FIELDS PARAM SUPPORT ---
+                let attributes;
+                if (req.query.fields) {
+                    // Get allowed fields from Set model definition
+                    const allowedFields = Object.keys(this.model.rawAttributes);
+                    attributes = req.query.fields.split(',').map(f => f.trim()).filter(f => allowedFields.includes(f));
+                    // Always include 'id' for reference
+                    if (!attributes.includes('id')) attributes.push('id');
+                    if (attributes.length === 0) attributes = undefined;
+                }
+                // --- END FIELDS PARAM SUPPORT ---
 
                 const paginationOptions = {
                     where: whereClause,
@@ -438,7 +437,8 @@ class SetController extends ApiController {
                         sortOrder
                     },
                     allowedSortFields: ['created_at', 'title', 'price', 'featured'],
-                    include: includes
+                    include: includes,
+                    ...(attributes ? { attributes } : {})
                 };
 
                 const result = await PaginationService.getPaginatedResults(this.model, paginationOptions);
@@ -446,22 +446,37 @@ class SetController extends ApiController {
                 // Transform the results
                 result.items = result.items.map(set => {
                     try {
-                        const transformed = SetTransformer.transformSet(set);
-                        return {
-                            ...transformed,
-                            category: set.category && set.category.name || 'Uncategorized',
-                            categoryId: set.category && set.category.id,
-                            educatorName: set.educator.name || 'Unknown',
-                            educatorImage: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
-                            educator: set.educator ? {
-                                id: set.educator.id,
-                                name: set.educator.name,
-                                image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
-                            } : null,
-                            image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
-                            price: parseFloat(set.price) || 0,
-                            hidden: Boolean(set.hidden)
-                        };
+                        // Only transform if all fields are present, otherwise just return as is
+                        if (attributes) {
+                            // Only return the requested fields (plus id)
+                            const filtered = {};
+                            for (const key of attributes) {
+                                filtered[key] = set[key];
+                            }
+                            // Attach included models if present
+                            if (set.category) filtered.category = set.category;
+                            if (set.educator) filtered.educator = set.educator;
+                            if (set.tags) filtered.tags = set.tags;
+                            if (set.likes) filtered.likes = set.likes;
+                            return filtered;
+                        } else {
+                            const transformed = SetTransformer.transformSet(set);
+                            return {
+                                ...transformed,
+                                category: set.category && set.category.name || 'Uncategorized',
+                                categoryId: set.category && set.category.id,
+                                educatorName: set.educator && set.educator.name || 'Unknown',
+                                educatorImage: set.educator && set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null,
+                                educator: set.educator ? {
+                                    id: set.educator.id,
+                                    name: set.educator.name,
+                                    image: set.educator.image ? responseFormatter.convertPathToUrl(set.educator.image) : null
+                                } : null,
+                                image: set.thumbnail ? responseFormatter.convertPathToUrl(set.thumbnail) : '/images/default-set.png',
+                                price: parseFloat(set.price) || 0,
+                                hidden: Boolean(set.hidden)
+                            };
+                        }
                     } catch (transformError) {
                         console.error('Error transforming set:', transformError);
                         return {
@@ -470,7 +485,6 @@ class SetController extends ApiController {
                         };
                     }
                 });
-
                 res.json(result);
             } catch (paginationError) {
                 console.error('Error in pagination:', paginationError);

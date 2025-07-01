@@ -13,6 +13,7 @@ class PaginationService {
      * @param {Object} options.query - Request query parameters
      * @param {Array} options.include - Sequelize include options
      * @param {Array} options.allowedSortFields - List of allowed sort fields
+     * @param {Array} options.attributes - List of attributes to include
      * @returns {Promise<Object>} Paginated results
      */
     static async getPaginatedResults(model, options) {
@@ -23,7 +24,8 @@ class PaginationService {
                 defaultOrder = 'DESC',
                 query = {},
                 allowedSortFields = [],
-                include = []
+                include = [],
+                attributes
         } = options;
 
         const page = parseInt(query.page) || 1;
@@ -56,7 +58,7 @@ class PaginationService {
             col: model.primaryKeyAttribute
         });
 
-        // Get items with optimized includes
+        // Get items with optimized includes and attributes
         const items = await model.findAll({
             where: whereClause,
             order: [
@@ -65,6 +67,7 @@ class PaginationService {
             limit,
             offset,
             include: include.length > 0 ? include : undefined,
+            attributes: attributes ? attributes : undefined,
             subQuery: false,
             raw: false,
             nest: false
