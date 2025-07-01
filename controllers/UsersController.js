@@ -91,33 +91,30 @@ class UsersController extends ApiController {
             // Handle file upload if present
             if (req.file) {
                 try {
-                    // Update user with new image path - use full URL
-                    const baseUrl = process.env.NODE_ENV === 'development' ?
-                        'http://localhost:5000' :
-                        process.env.PRODUCTION_URL || 'http://localhost:5000';
-                    const imagePath = `${baseUrl}/images/users/${req.file.filename}`;
-
-                    // Verify the file exists
-                    const filePath = path.join(__dirname, '../public/images/users', req.file.filename);
-                    if (!fs.existsSync(filePath)) {
-                        throw new Error('Uploaded file not found');
+                    // Upload to Cloudinary
+                    const CloudinaryService = require('../services/CloudinaryService');
+                    const uploadResult = await CloudinaryService.uploadImage(req.file.buffer, { folder: 'user-profile-images' });
+                    if (!uploadResult || !uploadResult.secure_url) {
+                        throw new Error('Cloudinary upload failed');
                     }
 
-                    // Delete old image if it exists
-                    if (user.image) {
-                        const oldImagePath = user.image.split('/').pop();
-                        const oldFilePath = path.join(__dirname, '../public/images/users', oldImagePath);
-                        if (fs.existsSync(oldFilePath)) {
-                            fs.unlinkSync(oldFilePath);
+                    // Delete old Cloudinary image if it exists and is a Cloudinary URL
+                    if (user.image && user.image.includes('cloudinary.com')) {
+                        // Extract publicId from the URL
+                        const urlParts = user.image.split('/');
+                        const publicIdWithExt = urlParts.slice(-2).join('/').split('.')[0];
+                        try {
+                            await CloudinaryService.deleteImage(publicIdWithExt);
+                        } catch (err) {
+                            console.warn('Failed to delete old Cloudinary image:', err);
                         }
                     }
 
-                    // Update the image path
-                    await user.set({ image: imagePath });
+                    // Update the image path to Cloudinary URL
+                    await user.set({ image: uploadResult.secure_url });
                     await user.save();
-
                 } catch (err) {
-                    console.error('Error handling file upload:', err);
+                    console.error('Error handling Cloudinary upload:', err);
                     return res.status(500).json({ message: 'Failed to process uploaded file' });
                 }
             }

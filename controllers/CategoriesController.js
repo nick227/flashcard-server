@@ -126,19 +126,6 @@ class CategoriesController extends ApiController {
             const limit = parseInt(req.query.limit) || 4; // Number of categories
             const setsPerCategory = parseInt(req.query.setsPerCategory) || 5; // Sets per category
 
-            // Validate parameters
-            if (limit < 1 || limit > 20) {
-                return res.status(400).json({
-                    error: 'Limit must be between 1 and 20'
-                });
-            }
-
-            if (setsPerCategory < 1 || setsPerCategory > 20) {
-                return res.status(400).json({
-                    error: 'Sets per category must be between 1 and 20'
-                });
-            }
-
             // First, get all categories that have at least one non-hidden set
             const categoriesWithSets = await this.model.scope(null).findAll({
                 include: [{
