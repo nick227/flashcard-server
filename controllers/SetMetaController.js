@@ -189,6 +189,8 @@ class SetMetaController extends ApiController {
                 return res.json([]); // Return empty array if no category
             }
 
+            const limit = parseInt(req.query.limit) || 3;
+
             // Find related sets based on category only (simplified for now)
             const relatedSets = await this.model.findAll({
                 where: {
@@ -210,8 +212,22 @@ class SetMetaController extends ApiController {
                 order: [
                     ['created_at', 'DESC']
                 ],
-                limit: 6 // Limit to 6 related sets
+                limit: limit || 3
             });
+
+            if (relatedSets.length < limit) {
+                const newLimit = limit - relatedSets.length;
+                const randomSets = await this.model.findAll({
+                    where: {
+                        id: {
+                            [Op.ne]: setId
+                        }
+                    },
+                    limit: newLimit,
+                    order: this.model.sequelize.random()
+                });
+                relatedSets = [...relatedSets, ...randomSets];
+            }
 
             // Get card counts separately to avoid association issues
             const setIds = relatedSets.map(set => set.id);
