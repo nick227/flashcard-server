@@ -65,6 +65,8 @@ router.get('/',
 
 router.get('/count', setsController.count.bind(setsController));
 
+router.get('/random', setsController.random.bind(setsController));
+
 router.get('/:id',
     cache('5 minutes'),
     (req, res, next) => {

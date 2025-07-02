@@ -25,6 +25,36 @@ class SetsController extends ApiController {
         this.responseFormatter = responseFormatter;
     }
 
+    async random(req, res) {
+        try {
+            const limit = req.query.limit ? parseInt(req.query.limit, 10) : 1;
+            if (limit === 1) {
+                //if limit is 1, return a single set
+                const set = await this.model.findOne({
+                    order: this.model.sequelize.random(),
+                    where: {
+                        hidden: false,
+                        is_subscriber_only: false
+                    }
+                });
+                res.json(set);
+            } else {
+                //if limit is greater than 1, return an array of sets
+                const sets = await this.model.findAll({
+                    order: this.model.sequelize.random(),
+                    where: {
+                        hidden: false,
+                        is_subscriber_only: false
+                    },
+                    limit: limit
+                });
+                res.json(sets);
+            }
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to fetch random set' });
+        }
+    }
+
     // Override batchGet to add logging
     async batchGet(req, res) {
         const requestId = req.headers['x-request-id'] || 'unknown';
