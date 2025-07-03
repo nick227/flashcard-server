@@ -1,10 +1,12 @@
 const ApiController = require('./ApiController');
 const responseFormatter = require('../services/ResponseFormatter');
 const { Op } = require('sequelize');
+const SetService = require('../services/SetService');
 
 class SetMetaController extends ApiController {
     constructor() {
         super('Set');
+        this.setService = new SetService();
     }
 
     async toggleLikeSet(req, res) {
@@ -15,7 +17,12 @@ class SetMetaController extends ApiController {
             );
             return res.json(result);
         } catch (err) {
-            return this.handleError(err, res);
+            if (typeof this.handleError === 'function') {
+                return this.handleError(err, res);
+            } else {
+                console.error('toggleLikeSet error:', err);
+                return res.status(500).json({ error: err.message });
+            }
         }
     }
 
@@ -29,7 +36,12 @@ class SetMetaController extends ApiController {
             });
             return res.json({ liked: !!like });
         } catch (err) {
-            return this.handleError(err, res);
+            if (typeof this.handleError === 'function') {
+                return this.handleError(err, res);
+            } else {
+                console.error('getUserLikeStatus error:', err);
+                return res.status(500).json({ error: err.message });
+            }
         }
     }
 
