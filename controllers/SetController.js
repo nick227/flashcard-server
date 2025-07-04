@@ -593,6 +593,7 @@ class SetController extends ApiController {
         return {
             page: parseInt(params.page) || 1,
             limit: parseInt(params.limit) || 12,
+            offset: params.offset !== undefined ? parseInt(params.offset, 10) : undefined,
             category: params.category,
             sortOrder: params.sortOrder || 'featured',
             educatorId: params.educatorId ? parseInt(params.educatorId, 10) : null,

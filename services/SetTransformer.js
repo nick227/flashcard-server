@@ -14,7 +14,8 @@ class SetTransformer {
             educator: set.educator ? {
                 id: set.educator.id,
                 name: set.educator.name,
-                email: set.educator.email
+                email: set.educator.email,
+                image: set.educator.image
             } : null,
             thumbnail: set.thumbnail,
             price: set.price,

@@ -28,6 +28,7 @@ class SetsController extends ApiController {
     async random(req, res) {
         try {
             const limit = req.query.limit ? parseInt(req.query.limit, 10) : 1;
+            const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
             if (limit === 1) {
                 //if limit is 1, return a single set
                 const set = await this.model.findOne({
@@ -35,9 +36,15 @@ class SetsController extends ApiController {
                     where: {
                         hidden: false,
                         is_subscriber_only: false
-                    }
+                    },
+                    include: [
+                        { model: this.model.sequelize.models.Category, as: 'category', attributes: ['id', 'name'] },
+                        { model: this.model.sequelize.models.User, as: 'educator', attributes: ['id', 'name', 'image'] },
+                        // add other associations as needed (tags, etc.)
+                    ]
                 });
-                res.json(set);
+                const transformedSet = SetTransformer.transformSet(set);
+                res.json(transformedSet);
             } else {
                 //if limit is greater than 1, return an array of sets
                 const sets = await this.model.findAll({
@@ -46,9 +53,16 @@ class SetsController extends ApiController {
                         hidden: false,
                         is_subscriber_only: false
                     },
-                    limit: limit
+                    limit: limit,
+                    offset: offset,
+                    include: [
+                        { model: this.model.sequelize.models.Category, as: 'category', attributes: ['id', 'name'] },
+                        { model: this.model.sequelize.models.User, as: 'educator', attributes: ['id', 'name', 'image'] },
+                        { model: this.model.sequelize.models.Tag, as: 'tags', attributes: ['id', 'name'] },
+                    ]
                 });
-                res.json(sets);
+                const transformedSets = sets.map(set => SetTransformer.transformSet(set));
+                res.json(transformedSets);
             }
         } catch (err) {
             res.status(500).json({ error: 'Failed to fetch random set' });

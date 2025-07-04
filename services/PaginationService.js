@@ -30,18 +30,13 @@ class PaginationService {
 
         const page = parseInt(query.page) || 1;
         const limit = parseInt(query.limit);
-        const offset = (page - 1) * limit;
+        const offset = query.offset !== undefined ? parseInt(query.offset) : (page - 1) * limit;
 
         // Map sort field from camelCase to snake_case using centralized mapping
         const sortField = Object.keys(camelToSnakeKeys({
             [query.sortBy || defaultSort]: null
         }))[0];
         const sortOrder = (query.sortOrder || defaultOrder).toUpperCase();
-
-        // Validate sort field
-        if (allowedSortFields.length > 0 && !allowedSortFields.includes(sortField)) {
-            throw new Error(`Invalid sort field: ${query.sortBy || defaultSort}`);
-        }
 
         // Build where clause
         const whereClause = {...where };
@@ -51,6 +46,11 @@ class PaginationService {
             }
         });
 
+        // Validate sort field
+        if (allowedSortFields.length > 0 && !allowedSortFields.includes(sortField)) {
+            throw new Error(`Invalid sort field: ${query.sortBy || defaultSort}`);
+        }
+
         // Get total count with a simpler query
         const total = await model.count({
             where: whereClause,
@@ -58,11 +58,13 @@ class PaginationService {
             col: model.primaryKeyAttribute
         });
 
-        // Get items with optimized includes and attributes
-        const items = await model.findAll({
+        // Sequelize query options
+        const findAllOptions = {
             where: whereClause,
             order: [
-                [sortField, sortOrder]
+                //debug temp disable
+                //[sortField, sortOrder],
+                ['id', 'DESC']
             ],
             limit,
             offset,
@@ -71,7 +73,10 @@ class PaginationService {
             subQuery: false,
             raw: false,
             nest: false
-        });
+        };
+
+        // Get items with optimized includes and attributes
+        const items = await model.findAll(findAllOptions);
 
         // Transform the results efficiently
         const transformedItems = items.map(item => item.get({ plain: true }));

@@ -102,6 +102,10 @@ class ApiController {
             if (req.query.include) {
                 try { options.include = JSON.parse(req.query.include); } catch (e) {}
             }
+            // Handle fields param for selecting specific columns
+            if (req.query.fields) {
+                options.attributes = req.query.fields.split(',').map(f => f.trim());
+            }
 
             const items = await this.model.findAll(options);
             const camelItems = toCamel(items);
