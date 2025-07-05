@@ -20,9 +20,7 @@ const config = {
             match: [/Deadlock/i, /Connection lost/i]
         }
     },
-    logging: isProduction ? console.error : console.log,
-    queryTimeout: 30000,
-    statementTimeout: 30000
+    logging: isProduction ? console.error : console.log
 };
 
 // Only add SSL in production
@@ -32,8 +30,7 @@ if (isProduction) {
             require: true,
             rejectUnauthorized: false
         },
-        connectTimeout: 60000,
-        statementTimeout: 30000
+        connectTimeout: 60000
     };
 }
 

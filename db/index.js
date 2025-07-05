@@ -1,16 +1,6 @@
 const { Sequelize } = require('sequelize');
 const config = require('../config/database');
 
-// Debug logging
-console.log('Attempting database connection with config:', {
-    database: config.database,
-    username: config.username,
-    host: config.host,
-    port: config.port,
-    dialect: config.dialect,
-    hasSSL: Boolean(config.dialectOptions && config.dialectOptions.ssl)
-});
-
 const sequelize = new Sequelize(
     config.database,
     config.username,
